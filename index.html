@@ -471,6 +471,7 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
     <div class="nav-tab" data-view="analytics">Analytics</div>
     <div class="nav-tab" data-view="insights">Insights</div>
     <div class="nav-tab" data-view="coach">Coach</div>
+    <div class="nav-tab" data-view="admin" id="nav-admin" style="display:none;color:#f1c40f;">⚙ Admin</div>
   </div>
   <span class="gym-user-badge" id="gym-user-badge"></span>
   <span id="gym-sync-status" style="font-size:.7rem;color:var(--text2);margin-left:8px;cursor:pointer;" onclick="gymForceSync()" title="Click to force sync">☁ Synced</span>
@@ -782,6 +783,17 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
     </div>
     <div id="coach-content"></div>
   </div>
+
+  <!-- ADMIN VIEW (only visible when logged in as FO) -->
+  <div id="view-admin" class="view">
+    <h2>⚙ Admin Panel</h2>
+    <div class="card">
+      <h3>User Approval Management</h3>
+      <p style="font-size:.85rem;color:var(--text2);margin-bottom:16px;">Approve or reject new user signup requests. Only approved users can log into the app.</p>
+      <button class="btn btn-secondary btn-sm" onclick="adminRefresh()">⟳ Refresh List</button>
+    </div>
+    <div id="admin-content" style="margin-top:16px;"></div>
+  </div>
 </div>
 
 <!-- Modal -->
@@ -876,14 +888,39 @@ async function _resolveUsername(user, fallback) {
   } catch(e) { return fallback; }
 }
 
+async function _checkApproval(u) {
+  // FO is always admin/approved
+  if (u.toUpperCase() === 'FO') return 'approved';
+  if (!_authDb) return 'unknown';
+  try {
+    const doc = await _authDb.collection('approvals').doc(u).get();
+    if (!doc.exists) return 'pending'; // no doc = treat as pending
+    return doc.data().status || 'pending';
+  } catch(e) { console.error('[Auth] approval check failed:',e); return 'unknown'; }
+}
+
 async function _tryAuth(u, p) {
-  if (!u || !p) return false;
-  if (!_fbAuth) return false;
+  if (!u || !p) return {success:false, reason:'invalid'};
+  if (!_fbAuth) return {success:false, reason:'offline'};
   const email = _emailFor(u);
   const fbPw = await _firebasePasswordFor(p);
   try {
     const result = await _fbAuth.signInWithEmailAndPassword(email, fbPw);
-    return await _resolveUsername(result.user, u);
+    const username = await _resolveUsername(result.user, u);
+    // Check approval status
+    const status = await _checkApproval(username);
+    if (status === 'approved') {
+      return {success:true, userId: username};
+    } else if (status === 'pending') {
+      await _fbAuth.signOut();
+      return {success:false, reason:'pending'};
+    } else if (status === 'rejected') {
+      await _fbAuth.signOut();
+      return {success:false, reason:'rejected'};
+    } else {
+      await _fbAuth.signOut();
+      return {success:false, reason:'unknown'};
+    }
   } catch(e) {
     // Special case: FO migration - if FO/FO doesn't exist yet, create it
     if (u.toUpperCase() === 'FO' && p === 'FO' && (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials')) {
@@ -891,14 +928,14 @@ async function _tryAuth(u, p) {
         const result = await _fbAuth.createUserWithEmailAndPassword(email, fbPw);
         await result.user.updateProfile({ displayName: 'FO' });
         console.log('[Auth] FO account created in Firebase Auth');
-        return 'FO';
+        return {success:true, userId: 'FO'};
       } catch(e2) {
         console.error('[Auth] FO migration failed:', e2);
-        return false;
+        return {success:false, reason:'invalid'};
       }
     }
     console.error('[Auth] login failed:', e.code, e.message);
-    return false;
+    return {success:false, reason:'invalid'};
   }
 }
 
@@ -914,7 +951,17 @@ async function _trySignup(u, p) {
   try {
     const result = await _fbAuth.createUserWithEmailAndPassword(email, fbPw);
     await result.user.updateProfile({ displayName: u });
-    return {success: true, userId: u};
+    // Create pending approval entry
+    try {
+      await _authDb.collection('approvals').doc(u).set({
+        userId: u,
+        status: 'pending',
+        requestedAt: Date.now()
+      });
+    } catch(e) { console.error('[Signup] failed to create approval entry:',e); }
+    // Sign the user out - they need admin approval before logging in
+    await _fbAuth.signOut();
+    return {success: true, pending: true, userId: u};
   } catch(e) {
     if (e.code === 'auth/email-already-in-use') return {error: 'This User ID is already taken'};
     if (e.code === 'auth/invalid-email') return {error: 'Invalid User ID format'};
@@ -988,12 +1035,22 @@ if (!_activeUser) {
     loginBtn.disabled = true;
     loginBtn.textContent = 'Signing in...';
     errDiv.textContent = '';
-    const canonicalUser = await _tryAuth(u, p);
-    if (canonicalUser) {
-      sessionStorage.setItem('gym_active_user', canonicalUser);
+    const result = await _tryAuth(u, p);
+    if (result.success) {
+      sessionStorage.setItem('gym_active_user', result.userId);
       location.reload();
     } else {
-      errDiv.textContent = 'Invalid User ID or Password';
+      if (result.reason === 'pending') {
+        errDiv.innerHTML = '⏳ Your account is pending admin approval.<br>Please contact the administrator to be activated.';
+        errDiv.style.color = 'var(--orange)';
+      } else if (result.reason === 'rejected') {
+        errDiv.innerHTML = '✗ Your account has been rejected.<br>Please contact the administrator.';
+        errDiv.style.color = '#e74c3c';
+      } else if (result.reason === 'offline') {
+        errDiv.textContent = 'Cloud unavailable. Check your internet connection.';
+      } else {
+        errDiv.textContent = 'Invalid User ID or Password';
+      }
       loginBtn.disabled = false;
       loginBtn.textContent = 'Sign In';
       passInput.value = '';
@@ -1009,8 +1066,27 @@ if (!_activeUser) {
     signupBtn.disabled = true;
     signupBtn.textContent = 'Creating account...';
     errDiv.textContent = '';
+    errDiv.style.color = '#e74c3c';
     const result = await _trySignup(u, p);
-    if (result.success) {
+    if (result.success && result.pending) {
+      // Show waiting message
+      formSignup.style.display = 'none';
+      subtitle.textContent = 'Account pending approval';
+      errDiv.style.color = 'var(--green)';
+      errDiv.innerHTML = '✓ Account "<strong>' + u + '</strong>" created successfully.<br><br>⏳ Your account is now pending admin approval.<br><br>Please contact the administrator to activate your account. Once approved, you can sign in normally.';
+      // Show "back to login" link
+      const backLink = document.createElement('div');
+      backLink.style.cssText = 'text-align:center;margin-top:16px;';
+      backLink.innerHTML = '<a href="#" id="back-to-login-link" style="color:var(--highlight);text-decoration:none;font-weight:600;font-size:.85rem;">← Back to Sign In</a>';
+      errDiv.parentNode.insertBefore(backLink, errDiv.nextSibling);
+      document.getElementById('back-to-login-link').addEventListener('click', e => {
+        e.preventDefault();
+        backLink.remove();
+        errDiv.innerHTML = '';
+        errDiv.style.color = '#e74c3c';
+        showLogin();
+      });
+    } else if (result.success) {
       sessionStorage.setItem('gym_active_user', result.userId);
       location.reload();
     } else {
@@ -2032,6 +2108,11 @@ function setMigrationVersion(v) { localStorage.setItem('gym_migration_version', 
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('gym-user-badge');
   if (badge && window.gymCurrentUser) badge.textContent = '👤 ' + window.gymCurrentUser;
+  // Show Admin tab only if logged in as FO
+  if (window.gymCurrentUser && window.gymCurrentUser.toUpperCase() === 'FO') {
+    const adminTab = document.getElementById('nav-admin');
+    if (adminTab) adminTab.style.display = '';
+  }
   // Wait for Firebase Auth state to restore before pulling (rules require auth)
   function _doInitialPull() {
     if (typeof gymPullFromCloud !== 'function') { _initialPullDone = true; return; }
@@ -2087,6 +2168,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (tab.dataset.view === 'analytics') refreshAnalytics();
       if (tab.dataset.view === 'insights') populateInsightExercises();
       if (tab.dataset.view === 'coach') initCoachTab();
+      if (tab.dataset.view === 'admin') adminRefresh();
     });
   });
 
@@ -8968,6 +9050,136 @@ window.onCoachTimeRangeChange = function() {
 };
 
 })();
+
+// ===================== ADMIN PANEL =====================
+window.adminRefresh = async function() {
+  const el = document.getElementById('admin-content');
+  if (!el) return;
+  if (!window.gymCurrentUser || window.gymCurrentUser.toUpperCase() !== 'FO') {
+    el.innerHTML = '<div class="card"><div style="color:#e74c3c;">Access denied. Admin only.</div></div>';
+    return;
+  }
+  el.innerHTML = '<div class="card"><div style="color:var(--text2);">Loading users...</div></div>';
+  try {
+    const snap = await firebase.firestore().collection('approvals').orderBy('requestedAt','desc').get();
+    if (snap.empty) {
+      el.innerHTML = '<div class="card"><div style="color:var(--text2);text-align:center;padding:20px;">No user signups yet.</div></div>';
+      return;
+    }
+    const pending = [];
+    const approved = [];
+    const rejected = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      d.id = doc.id;
+      if (d.status === 'approved') approved.push(d);
+      else if (d.status === 'rejected') rejected.push(d);
+      else pending.push(d);
+    });
+
+    let html = '';
+    // Pending users (most important)
+    html += '<div class="card"><h3 style="color:var(--orange);">⏳ Pending Approval (' + pending.length + ')</h3>';
+    if (!pending.length) {
+      html += '<div style="color:var(--text2);font-size:.85rem;">No pending requests.</div>';
+    } else {
+      pending.forEach(u => {
+        const dateStr = new Date(u.requestedAt).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+        html += '<div class="coach-ex-card"><div class="coach-ex-header">';
+        html += '<div><span class="coach-ex-name">' + u.userId + '</span><div style="font-size:.72rem;color:var(--text2);margin-top:2px;">Requested: ' + dateStr + '</div></div>';
+        html += '<div style="display:flex;gap:8px;">';
+        html += '<button class="btn btn-success btn-sm" onclick="adminApprove(\'' + u.userId + '\')">✓ Approve</button>';
+        html += '<button class="btn btn-danger btn-sm" onclick="adminReject(\'' + u.userId + '\')">✗ Reject</button>';
+        html += '</div></div></div>';
+      });
+    }
+    html += '</div>';
+
+    // Approved users
+    html += '<div class="card"><h3 style="color:var(--green);">✓ Approved Users (' + approved.length + ')</h3>';
+    if (!approved.length) {
+      html += '<div style="color:var(--text2);font-size:.85rem;">No approved users yet.</div>';
+    } else {
+      approved.forEach(u => {
+        const approvedDate = u.approvedAt ? new Date(u.approvedAt).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'unknown';
+        html += '<div class="coach-ex-card"><div class="coach-ex-header">';
+        html += '<div><span class="coach-ex-name">' + u.userId + '</span><div style="font-size:.72rem;color:var(--text2);margin-top:2px;">Approved: ' + approvedDate + '</div></div>';
+        html += '<div style="display:flex;gap:8px;">';
+        html += '<button class="btn btn-danger btn-sm" onclick="adminRevoke(\'' + u.userId + '\')">Revoke Access</button>';
+        html += '</div></div></div>';
+      });
+    }
+    html += '</div>';
+
+    // Rejected users
+    if (rejected.length) {
+      html += '<div class="card"><h3 style="color:#e74c3c;">✗ Rejected (' + rejected.length + ')</h3>';
+      rejected.forEach(u => {
+        html += '<div class="coach-ex-card"><div class="coach-ex-header">';
+        html += '<div><span class="coach-ex-name">' + u.userId + '</span></div>';
+        html += '<div style="display:flex;gap:8px;">';
+        html += '<button class="btn btn-success btn-sm" onclick="adminApprove(\'' + u.userId + '\')">Re-approve</button>';
+        html += '<button class="btn btn-danger btn-sm" onclick="adminDelete(\'' + u.userId + '\')">Delete Permanently</button>';
+        html += '</div></div></div>';
+      });
+      html += '</div>';
+    }
+
+    el.innerHTML = html;
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = '<div class="card"><div style="color:#e74c3c;">Error loading users: ' + e.message + '</div></div>';
+  }
+};
+
+window.adminApprove = async function(userId) {
+  if (!confirm('Approve user "' + userId + '"?\n\nThey will be able to log in immediately after approval.')) return;
+  try {
+    await firebase.firestore().collection('approvals').doc(userId).update({
+      status: 'approved',
+      approvedAt: Date.now(),
+      approvedBy: window.gymCurrentUser
+    });
+    showToast('User ' + userId + ' approved');
+    adminRefresh();
+  } catch(e) { alert('Error: ' + e.message); }
+};
+
+window.adminReject = async function(userId) {
+  if (!confirm('Reject user "' + userId + '"?\n\nThey will not be able to log in. You can re-approve later if needed.')) return;
+  try {
+    await firebase.firestore().collection('approvals').doc(userId).update({
+      status: 'rejected',
+      rejectedAt: Date.now(),
+      rejectedBy: window.gymCurrentUser
+    });
+    showToast('User ' + userId + ' rejected');
+    adminRefresh();
+  } catch(e) { alert('Error: ' + e.message); }
+};
+
+window.adminRevoke = async function(userId) {
+  if (!confirm('Revoke access for "' + userId + '"?\n\nThey will be unable to log in until you re-approve them. Their data is preserved.')) return;
+  try {
+    await firebase.firestore().collection('approvals').doc(userId).update({
+      status: 'rejected',
+      rejectedAt: Date.now(),
+      rejectedBy: window.gymCurrentUser
+    });
+    showToast('Access revoked for ' + userId);
+    adminRefresh();
+  } catch(e) { alert('Error: ' + e.message); }
+};
+
+window.adminDelete = async function(userId) {
+  if (!confirm('PERMANENTLY DELETE user "' + userId + '"?\n\nThis removes:\n- Their approval entry\n- Their workout data in the cloud\n\nNote: Their Firebase Auth account must be deleted manually from Firebase Console.\n\nThis cannot be undone.')) return;
+  try {
+    await firebase.firestore().collection('approvals').doc(userId).delete();
+    try { await firebase.firestore().collection('users').doc(userId).delete(); } catch(e){}
+    showToast('User ' + userId + ' deleted');
+    adminRefresh();
+  } catch(e) { alert('Error: ' + e.message); }
+};
 
 </script>
 </body>
