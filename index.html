@@ -196,9 +196,10 @@ select{min-width:140px;cursor:pointer;}
 .insight-day-btn.active{background:var(--highlight);border-color:var(--highlight);color:#fff;}
 
 /* Responsive */
-/* === MOBILE COMPACT MODE === */
-@media(max-width:768px){
-  body{font-size:13px;}
+/* === MOBILE COMPACT MODE v2 === */
+@media(max-width:900px){
+  html{font-size:13px !important;} /* Shrinks all rem-based sizes proportionally */
+  body{font-size:12.5px;}
   .chart-grid{grid-template-columns:1fr;}
   .nav{flex-wrap:wrap;padding:0 8px;}
   .nav-brand{font-size:.95rem;padding:9px 6px 9px 0;letter-spacing:-.3px;}
@@ -266,13 +267,16 @@ select{min-width:140px;cursor:pointer;}
   .cgp-ex-name{font-size:.72rem;}
   .cgp-ex-sets{font-size:.62rem;}
   .cgp-ex-pt{font-size:.66rem;}
-  /* Calendar */
-  .cal-day{min-height:48px;font-size:.74rem;padding:3px 1px;}
-  .cal-day .cal-day-num{font-size:.74rem;margin-bottom:1px;}
-  .cal-day .cal-day-tag{font-size:.58rem;}
-  .cal-day-label{font-size:.65rem;padding:6px 0;}
-  .cal-grid{gap:3px;}
-  .cal-header{margin-bottom:12px;}
+  /* Calendar - aggressive compaction */
+  .cal-day{min-height:42px !important;font-size:.7rem !important;padding:2px 1px !important;}
+  .cal-day .cal-day-num{font-size:.68rem !important;margin-bottom:1px !important;font-weight:600;}
+  .cal-day .cal-day-tag{font-size:.5rem !important;line-height:1.1 !important;}
+  .cal-day-label{font-size:.6rem !important;padding:4px 0 !important;}
+  .cal-grid{gap:2px !important;}
+  .cal-header{margin-bottom:8px !important;flex-wrap:wrap;gap:6px;}
+  #cal-month-label{font-size:.95rem !important;}
+  .cal-view-btn{padding:4px 10px !important;font-size:.7rem !important;}
+  .cal-day.has-workout::after{width:4px;height:4px;bottom:1px;}
   /* Modals */
   .modal{padding:16px;max-height:88vh;border-radius:10px;}
   .exdb-modal{padding:14px;max-height:90vh;}
@@ -305,8 +309,9 @@ select{min-width:140px;cursor:pointer;}
   .set-table td{padding:3px 6px;}
   .set-label{font-size:.78rem;min-width:80px;}
 }
-@media(max-width:480px){
-  body{font-size:12.5px;}
+@media(max-width:500px){
+  html{font-size:12px !important;}
+  body{font-size:12px;}
   .nav-brand{display:none;}
   .nav-tab{padding:9px 10px;font-size:.74rem;}
   .container{padding:6px;}
@@ -327,10 +332,10 @@ select{min-width:140px;cursor:pointer;}
   .readiness-circle{width:90px;height:90px;}
   .readiness-circle span{width:68px !important;height:68px !important;font-size:1.35rem !important;}
   .pr-card{padding:8px 10px;}
-  /* Calendar even tighter */
-  .cal-day{min-height:42px;font-size:.7rem;}
-  .cal-day .cal-day-num{font-size:.68rem;}
-  .cal-day .cal-day-tag{font-size:.55rem;}
+  /* Calendar even tighter on small phones */
+  .cal-day{min-height:38px !important;font-size:.66rem !important;}
+  .cal-day .cal-day-num{font-size:.64rem !important;}
+  .cal-day .cal-day-tag{font-size:.48rem !important;}
   /* Coach popup */
   .coach-grade-popup{padding:12px 14px;}
   .cgp-table th,.cgp-table td{font-size:.64rem;}
@@ -567,7 +572,7 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
     <div class="nav-tab" data-view="admin" id="nav-admin" style="display:none;color:#f1c40f;">⚙ Admin</div>
   </div>
   <span class="gym-user-badge" id="gym-user-badge"></span>
-  <span id="gym-sync-status" style="font-size:.7rem;color:var(--text2);margin-left:8px;cursor:pointer;" onclick="gymForceSync()" title="Click to force sync">☁ Synced</span>
+  <span id="gym-sync-status" style="font-size:.7rem;color:var(--text2);margin-left:8px;cursor:pointer;" onclick="gymForceSync()" title="Click to force sync">☁ Synced v2</span>
   <button class="gym-logout-btn" onclick="gymLogout()">Logout</button>
 </nav>
 
