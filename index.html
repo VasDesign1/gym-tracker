@@ -15,6 +15,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -828,12 +829,7 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 </div>
 
 <script>
-// ===================== AUTH GATE =====================
-// Hybrid auth: hardcoded admin user + Firestore-backed self-signup
-const USERS = {
-  'FO': 'FO'
-  // Built-in admin/owner user
-};
+// ===================== AUTH GATE (Firebase Authentication) =====================
 const _firebaseConfig = {
   apiKey: "AIzaSyCP8qvTGzBdols1FSr5Q9EwMXvsJRkzAEY",
   authDomain: "gym-tracker-5ce88.firebaseapp.com",
@@ -843,69 +839,77 @@ const _firebaseConfig = {
   appId: "1:803243354020:web:95dd74fd1ae85b1f9fc331"
 };
 let _authDb = null;
+let _fbAuth = null;
 try {
   if (typeof firebase !== 'undefined') {
     if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(_firebaseConfig);
     _authDb = firebase.firestore();
+    _fbAuth = firebase.auth();
+    // Use local persistence so the user stays logged in across sessions
+    _fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
   }
 } catch(e) { console.error('[Auth] Firebase init failed:', e); }
 
-async function _hashPassword(pw) {
+function _emailFor(username) {
+  return username.toLowerCase().trim() + '@gymtracker.local';
+}
+
+// Derive a strong password from user input (Firebase requires 6+ chars,
+// and this also adds a small obfuscation layer)
+async function _firebasePasswordFor(userPw) {
   try {
-    const buf = new TextEncoder().encode(pw + '_gymtracker_salt');
+    const buf = new TextEncoder().encode(userPw + '_gymtracker_v1_salt');
     const hash = await crypto.subtle.digest('SHA-256', buf);
     return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
   } catch(e) {
-    // Fallback: simple string transform (not secure but works)
-    let h = 0;
-    for (let i=0;i<pw.length;i++) { h = ((h<<5)-h)+pw.charCodeAt(i); h |= 0; }
-    return 'fallback_' + h;
+    // Fallback: just pad short passwords
+    return userPw.length < 6 ? (userPw + '_pad_gymtracker') : userPw;
   }
 }
 
 async function _tryAuth(u, p) {
   if (!u || !p) return false;
-  // Check hardcoded admin user (case-insensitive)
-  for (const key of Object.keys(USERS)) {
-    if (key.toLowerCase() === u.toLowerCase() && USERS[key] === p) {
-      return key; // return the canonical key
-    }
-  }
-  // Check Firestore accounts
-  if (!_authDb) return false;
+  if (!_fbAuth) return false;
+  const email = _emailFor(u);
+  const fbPw = await _firebasePasswordFor(p);
   try {
-    const docRef = _authDb.collection('accounts').doc(u.toLowerCase());
-    const doc = await docRef.get();
-    if (!doc.exists) return false;
-    const data = doc.data();
-    const hash = await _hashPassword(p);
-    if (data.passwordHash === hash) return data.userId || u;
+    const result = await _fbAuth.signInWithEmailAndPassword(email, fbPw);
+    return result.user.email.split('@')[0]; // returns lowercase username
+  } catch(e) {
+    // Special case: FO migration - if FO/FO doesn't exist yet, create it
+    if (u.toUpperCase() === 'FO' && p === 'FO' && (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials')) {
+      try {
+        const result = await _fbAuth.createUserWithEmailAndPassword(email, fbPw);
+        console.log('[Auth] FO account created in Firebase Auth');
+        return result.user.email.split('@')[0];
+      } catch(e2) {
+        console.error('[Auth] FO migration failed:', e2);
+        return false;
+      }
+    }
+    console.error('[Auth] login failed:', e.code, e.message);
     return false;
-  } catch(e) { console.error('[Auth] login check failed:',e); return false; }
+  }
 }
 
 async function _trySignup(u, p) {
   if (!u || u.length < 2) return {error: 'User ID must be at least 2 characters'};
   if (u.length > 30) return {error: 'User ID too long (max 30)'};
   if (!/^[a-zA-Z0-9_-]+$/.test(u)) return {error: 'User ID can only contain letters, numbers, _ and -'};
-  if (!p || p.length < 4) return {error: 'Password must be at least 4 characters'};
-  // Block hardcoded usernames
-  for (const key of Object.keys(USERS)) {
-    if (key.toLowerCase() === u.toLowerCase()) return {error: 'This User ID is reserved'};
-  }
-  if (!_authDb) return {error: 'Cloud unavailable, try again later'};
+  if (!p || p.length < 6) return {error: 'Password must be at least 6 characters'};
+  if (u.toUpperCase() === 'FO') return {error: 'This User ID is reserved'};
+  if (!_fbAuth) return {error: 'Cloud unavailable, try again later'};
+  const email = _emailFor(u);
+  const fbPw = await _firebasePasswordFor(p);
   try {
-    const docRef = _authDb.collection('accounts').doc(u.toLowerCase());
-    const existing = await docRef.get();
-    if (existing.exists) return {error: 'This User ID is already taken'};
-    const hash = await _hashPassword(p);
-    await docRef.set({
-      userId: u,
-      passwordHash: hash,
-      createdAt: Date.now()
-    });
-    return {success: true, userId: u};
-  } catch(e) { console.error('[Auth] signup failed:',e); return {error: 'Signup failed: ' + e.message}; }
+    const result = await _fbAuth.createUserWithEmailAndPassword(email, fbPw);
+    return {success: true, userId: result.user.email.split('@')[0]};
+  } catch(e) {
+    if (e.code === 'auth/email-already-in-use') return {error: 'This User ID is already taken'};
+    if (e.code === 'auth/invalid-email') return {error: 'Invalid User ID format'};
+    if (e.code === 'auth/weak-password') return {error: 'Password is too weak'};
+    return {error: 'Signup failed: ' + (e.message || e.code)};
+  }
 }
 
 let _activeUser = sessionStorage.getItem('gym_active_user');
@@ -927,7 +931,7 @@ if (!_activeUser) {
     + '<label for="signup-user">Choose a User ID</label>'
     + '<input id="signup-user" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="2-30 characters, letters/numbers">'
     + '<label for="signup-pass">Choose a Password</label>'
-    + '<input id="signup-pass" type="password" autocomplete="new-password" placeholder="Min 4 characters">'
+    + '<input id="signup-pass" type="password" autocomplete="new-password" placeholder="Min 6 characters">'
     + '<label for="signup-pass2">Confirm Password</label>'
     + '<input id="signup-pass2" type="password" autocomplete="new-password">'
     + '<button class="login-btn" id="signup-btn">Create Account</button>'
@@ -1050,9 +1054,14 @@ if (_activeUser === 'FO') {
 
 window.gymCurrentUser = _activeUser;
 window.gymLogout = function() {
-  if (confirm('Log out of ' + _activeUser + '?\n\nYour data is saved and will be available next time you log in.')) {
+  if (confirm('Log out of ' + _activeUser + '?\n\nYour data is saved in the cloud and will be available next time you log in.')) {
     sessionStorage.removeItem('gym_active_user');
-    location.reload();
+    sessionStorage.removeItem('gym_pulled_this_session');
+    if (_fbAuth) {
+      _fbAuth.signOut().finally(() => location.reload());
+    } else {
+      location.reload();
+    }
   }
 };
 
@@ -2012,12 +2021,13 @@ function setMigrationVersion(v) { localStorage.setItem('gym_migration_version', 
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('gym-user-badge');
   if (badge && window.gymCurrentUser) badge.textContent = '👤 ' + window.gymCurrentUser;
-  // Trigger initial cloud pull ONCE per session (avoids reload loops on iOS)
-  if (typeof gymPullFromCloud === 'function' && !sessionStorage.getItem('gym_pulled_this_session')) {
+  // Wait for Firebase Auth state to restore before pulling (rules require auth)
+  function _doInitialPull() {
+    if (typeof gymPullFromCloud !== 'function') { _initialPullDone = true; return; }
+    if (sessionStorage.getItem('gym_pulled_this_session')) { _initialPullDone = true; return; }
     sessionStorage.setItem('gym_pulled_this_session','1');
     gymPullFromCloud().then(updated => {
       if (updated) {
-        // Remote had newer data - re-render current view instead of full reload
         try {
           const activeTab = document.querySelector('.nav-tab.active');
           if (activeTab) {
@@ -2031,6 +2041,19 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(e) { console.error('[Sync] re-render failed:',e); }
       }
     }).catch(e => { console.error('[Sync] initial pull failed:',e); _initialPullDone = true; });
+  }
+  if (typeof firebase !== 'undefined' && firebase.auth) {
+    if (firebase.auth().currentUser) {
+      _doInitialPull();
+    } else {
+      const _unsub = firebase.auth().onAuthStateChanged(user => {
+        _unsub && _unsub();
+        if (user) _doInitialPull();
+        else { _initialPullDone = true; }
+      });
+      // Safety timeout: if auth never resolves, proceed anyway
+      setTimeout(() => { if (!_initialPullDone) { _doInitialPull(); } }, 3000);
+    }
   } else {
     _initialPullDone = true;
   }
