@@ -9087,9 +9087,10 @@ window.adminRefresh = async function() {
         const dateStr = new Date(u.requestedAt).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
         html += '<div class="coach-ex-card"><div class="coach-ex-header">';
         html += '<div><span class="coach-ex-name">' + u.userId + '</span><div style="font-size:.72rem;color:var(--text2);margin-top:2px;">Requested: ' + dateStr + '</div></div>';
-        html += '<div style="display:flex;gap:8px;">';
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
         html += '<button class="btn btn-success btn-sm" onclick="adminApprove(\'' + u.userId + '\')">✓ Approve</button>';
         html += '<button class="btn btn-danger btn-sm" onclick="adminReject(\'' + u.userId + '\')">✗ Reject</button>';
+        html += '<button class="btn btn-danger btn-sm" onclick="adminDelete(\'' + u.userId + '\')" style="background:#7f1d1d;">Delete</button>';
         html += '</div></div></div>';
       });
     }
@@ -9104,26 +9105,31 @@ window.adminRefresh = async function() {
         const approvedDate = u.approvedAt ? new Date(u.approvedAt).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'unknown';
         html += '<div class="coach-ex-card"><div class="coach-ex-header">';
         html += '<div><span class="coach-ex-name">' + u.userId + '</span><div style="font-size:.72rem;color:var(--text2);margin-top:2px;">Approved: ' + approvedDate + '</div></div>';
-        html += '<div style="display:flex;gap:8px;">';
-        html += '<button class="btn btn-danger btn-sm" onclick="adminRevoke(\'' + u.userId + '\')">Revoke Access</button>';
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+        html += '<button class="btn btn-secondary btn-sm" onclick="adminRevoke(\'' + u.userId + '\')">Revoke</button>';
+        html += '<button class="btn btn-danger btn-sm" onclick="adminDelete(\'' + u.userId + '\')">Delete</button>';
         html += '</div></div></div>';
       });
     }
     html += '</div>';
 
-    // Rejected users
+    // Rejected/Revoked users
     if (rejected.length) {
-      html += '<div class="card"><h3 style="color:#e74c3c;">✗ Rejected (' + rejected.length + ')</h3>';
+      html += '<div class="card"><h3 style="color:#e74c3c;">✗ Rejected / Revoked (' + rejected.length + ')</h3>';
       rejected.forEach(u => {
+        const rejectedDate = u.rejectedAt ? new Date(u.rejectedAt).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : 'unknown';
         html += '<div class="coach-ex-card"><div class="coach-ex-header">';
-        html += '<div><span class="coach-ex-name">' + u.userId + '</span></div>';
-        html += '<div style="display:flex;gap:8px;">';
+        html += '<div><span class="coach-ex-name">' + u.userId + '</span><div style="font-size:.72rem;color:var(--text2);margin-top:2px;">Rejected: ' + rejectedDate + '</div></div>';
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
         html += '<button class="btn btn-success btn-sm" onclick="adminApprove(\'' + u.userId + '\')">Re-approve</button>';
-        html += '<button class="btn btn-danger btn-sm" onclick="adminDelete(\'' + u.userId + '\')">Delete Permanently</button>';
+        html += '<button class="btn btn-danger btn-sm" onclick="adminDelete(\'' + u.userId + '\')">Delete</button>';
         html += '</div></div></div>';
       });
       html += '</div>';
     }
+
+    // Pending users also get a delete button (in case admin wants to dismiss)
+    // (already shown above, just adding info)
 
     el.innerHTML = html;
   } catch(e) {
@@ -9172,11 +9178,21 @@ window.adminRevoke = async function(userId) {
 };
 
 window.adminDelete = async function(userId) {
-  if (!confirm('PERMANENTLY DELETE user "' + userId + '"?\n\nThis removes:\n- Their approval entry\n- Their workout data in the cloud\n\nNote: Their Firebase Auth account must be deleted manually from Firebase Console.\n\nThis cannot be undone.')) return;
+  const msg = 'PERMANENTLY DELETE user "' + userId + '"?\n\n'
+    + 'This will delete:\n'
+    + '  • Their approval/status entry\n'
+    + '  • All their workout data in the cloud\n\n'
+    + 'IMPORTANT: To fully delete the user, you also need to:\n'
+    + '  1. Go to Firebase Console → Authentication\n'
+    + '  2. Find the user (' + userId.toLowerCase() + '@gymtracker.local)\n'
+    + '  3. Delete them from there too\n\n'
+    + 'Until then, they can technically still authenticate but won\'t be able to access any data (locked out by approval check).\n\n'
+    + 'This action cannot be undone. Continue?';
+  if (!confirm(msg)) return;
   try {
     await firebase.firestore().collection('approvals').doc(userId).delete();
     try { await firebase.firestore().collection('users').doc(userId).delete(); } catch(e){}
-    showToast('User ' + userId + ' deleted');
+    showToast('User ' + userId + ' deleted from Firestore');
     adminRefresh();
   } catch(e) { alert('Error: ' + e.message); }
 };
