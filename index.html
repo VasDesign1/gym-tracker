@@ -1001,21 +1001,25 @@ function gymPullFromCloud() {
       _initialPullDone = true;
 
       if (remoteModified > localModified && Object.keys(remoteData).length > 0) {
-        // Remote is newer - replace local
+        // Remote is newer - replace local (preserve seed flag and last_modified)
         const _bypassSet = _origAuthSet;
-        // Clear existing gym_ keys for this user
-        const toRemove = [];
         const prefix = _activeUser + '_';
+        const PRESERVE = ['gym_seed_imported_v1','gym_last_modified'];
+        const toRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
-          if (k && k.startsWith(prefix) && k.slice(prefix.length).startsWith('gym_')) toRemove.push(k);
+          if (k && k.startsWith(prefix)) {
+            const gk = k.slice(prefix.length);
+            if (gk.startsWith('gym_') && PRESERVE.indexOf(gk) === -1) toRemove.push(k);
+          }
         }
-        toRemove.forEach(k => { try { _origRawRemove(k); } catch(e){} });
-        // Write remote data
+        toRemove.forEach(k => { try { localStorage.removeItem(k.slice(prefix.length)); } catch(e){} });
+        // Write remote data via auth wrapper (which prefixes correctly)
         Object.entries(remoteData).forEach(([k,v]) => { _bypassSet(k, v); });
         _bypassSet('gym_last_modified', String(remoteModified));
+        _bypassSet('gym_seed_imported_v1', '1');
         gymSyncStatus('idle');
-        return true; // signal that we updated local
+        return true;
       } else if (localModified > remoteModified && Object.keys(remoteData).length === 0) {
         // Local has data but remote is empty
         return gymPushToCloud().then(() => false);
@@ -1877,14 +1881,25 @@ function setMigrationVersion(v) { localStorage.setItem('gym_migration_version', 
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('gym-user-badge');
   if (badge && window.gymCurrentUser) badge.textContent = '👤 ' + window.gymCurrentUser;
-  // Trigger initial cloud pull (async, doesn't block UI)
-  if (typeof gymPullFromCloud === 'function') {
+  // Trigger initial cloud pull ONCE per session (avoids reload loops on iOS)
+  if (typeof gymPullFromCloud === 'function' && !sessionStorage.getItem('gym_pulled_this_session')) {
+    sessionStorage.setItem('gym_pulled_this_session','1');
     gymPullFromCloud().then(updated => {
       if (updated) {
-        // Remote had newer data - reload UI to reflect it
-        setTimeout(() => location.reload(), 200);
+        // Remote had newer data - re-render current view instead of full reload
+        try {
+          const activeTab = document.querySelector('.nav-tab.active');
+          if (activeTab) {
+            const view = activeTab.dataset.view;
+            if (view === 'calendar' && typeof renderCalendar === 'function') renderCalendar();
+            else if (view === 'analytics' && typeof refreshAnalytics === 'function') refreshAnalytics();
+            else if (view === 'insights' && typeof populateInsightExercises === 'function') populateInsightExercises();
+            else if (view === 'coach' && typeof initCoachTab === 'function') initCoachTab();
+          }
+          showToast && showToast('Data synced from cloud (' + window.gymCurrentUser + ')');
+        } catch(e) { console.error('[Sync] re-render failed:',e); }
       }
-    });
+    }).catch(e => { console.error('[Sync] initial pull failed:',e); _initialPullDone = true; });
   } else {
     _initialPullDone = true;
   }
