@@ -14,6 +14,8 @@
 <title>Gym Tracker Pro</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 :root{--bg:#0f0f1a;--card:#1a1a2e;--card2:#16213e;--accent:#0f3460;--highlight:#e94560;--highlight2:#ff6b6b;--green:#2ecc71;--blue:#3498db;--purple:#9b59b6;--orange:#e67e22;--text:#eaeaea;--text2:#a0a0b8;--border:#2a2a4a;--input-bg:#12122a;--radius:10px;}
@@ -470,6 +472,7 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
     <div class="nav-tab" data-view="coach">Coach</div>
   </div>
   <span class="gym-user-badge" id="gym-user-badge"></span>
+  <span id="gym-sync-status" style="font-size:.7rem;color:var(--text2);margin-left:8px;cursor:pointer;" onclick="gymForceSync()" title="Click to force sync">☁ Synced</span>
   <button class="gym-logout-btn" onclick="gymLogout()">Logout</button>
 </nav>
 
@@ -909,6 +912,149 @@ window.gymLogout = function() {
   if (confirm('Log out of ' + _activeUser + '?\n\nYour data is saved and will be available next time you log in.')) {
     sessionStorage.removeItem('gym_active_user');
     location.reload();
+  }
+};
+
+// ===================== FIREBASE CLOUD SYNC =====================
+const firebaseConfig = {
+  apiKey: "AIzaSyCP8qvTGzBdols1FSr5Q9EwMXvsJRkzAEY",
+  authDomain: "gym-tracker-5ce88.firebaseapp.com",
+  projectId: "gym-tracker-5ce88",
+  storageBucket: "gym-tracker-5ce88.firebasestorage.app",
+  messagingSenderId: "803243354020",
+  appId: "1:803243354020:web:95dd74fd1ae85b1f9fc331"
+};
+
+let _fbDb = null;
+let _fbDocRef = null;
+let _syncEnabled = false;
+let _syncTimer = null;
+let _syncStatus = 'idle';
+let _initialPullDone = false;
+
+try {
+  if (typeof firebase !== 'undefined') {
+    firebase.initializeApp(firebaseConfig);
+    _fbDb = firebase.firestore();
+    _fbDocRef = _fbDb.collection('users').doc(_activeUser);
+    _syncEnabled = true;
+  }
+} catch(e) { console.error('[Sync] Firebase init failed:', e); }
+
+function gymSyncStatus(s) {
+  _syncStatus = s;
+  const el = document.getElementById('gym-sync-status');
+  if (el) {
+    const labels = {idle:'☁ Synced',syncing:'⟳ Syncing...',pulling:'⟳ Loading...',offline:'⚠ Offline',error:'⚠ Error'};
+    const colors = {idle:'var(--green)',syncing:'var(--orange)',pulling:'var(--blue)',offline:'var(--text2)',error:'#e74c3c'};
+    el.textContent = labels[s] || s;
+    el.style.color = colors[s] || 'var(--text2)';
+  }
+}
+
+function gymCollectAllUserKeys() {
+  const data = {};
+  const prefix = _activeUser + '_';
+  for (let i = 0; i < localStorage.length; i++) {
+    const fullKey = localStorage.key(i);
+    if (fullKey && fullKey.startsWith(prefix)) {
+      const gymKey = fullKey.slice(prefix.length);
+      if (gymKey.startsWith('gym_') && gymKey !== 'gym_last_modified' && gymKey !== 'gym_seed_imported_v1') {
+        data[gymKey] = localStorage.getItem(gymKey); // uses our wrapper
+      }
+    }
+  }
+  return data;
+}
+
+function gymPushToCloud() {
+  if (!_syncEnabled || !_fbDocRef) return Promise.resolve();
+  gymSyncStatus('syncing');
+  const data = gymCollectAllUserKeys();
+  const ts = Date.now();
+  return _fbDocRef.set({data:data,lastModified:ts,user:_activeUser},{merge:false})
+    .then(() => {
+      // Use the AUTH-wrapped setItem (already in scope) but bypass our sync hook
+      const _bypassSet = _origAuthSet;
+      _bypassSet('gym_last_modified', String(ts));
+      gymSyncStatus('idle');
+    })
+    .catch(e => { console.error('[Sync] Push failed:',e); gymSyncStatus('error'); });
+}
+
+function gymPullFromCloud() {
+  if (!_syncEnabled || !_fbDocRef) return Promise.resolve(false);
+  gymSyncStatus('pulling');
+  return _fbDocRef.get()
+    .then(doc => {
+      if (!doc.exists) {
+        // No remote data - push current local
+        gymSyncStatus('idle');
+        _initialPullDone = true;
+        return gymPushToCloud().then(() => false);
+      }
+      const remote = doc.data();
+      const remoteData = remote.data || {};
+      const remoteModified = remote.lastModified || 0;
+      const localModified = parseInt(localStorage.getItem('gym_last_modified') || '0');
+
+      _initialPullDone = true;
+
+      if (remoteModified > localModified && Object.keys(remoteData).length > 0) {
+        // Remote is newer - replace local
+        const _bypassSet = _origAuthSet;
+        // Clear existing gym_ keys for this user
+        const toRemove = [];
+        const prefix = _activeUser + '_';
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(prefix) && k.slice(prefix.length).startsWith('gym_')) toRemove.push(k);
+        }
+        toRemove.forEach(k => { try { _origRawRemove(k); } catch(e){} });
+        // Write remote data
+        Object.entries(remoteData).forEach(([k,v]) => { _bypassSet(k, v); });
+        _bypassSet('gym_last_modified', String(remoteModified));
+        gymSyncStatus('idle');
+        return true; // signal that we updated local
+      } else if (localModified > remoteModified && Object.keys(remoteData).length === 0) {
+        // Local has data but remote is empty
+        return gymPushToCloud().then(() => false);
+      }
+      gymSyncStatus('idle');
+      return false;
+    })
+    .catch(e => { console.error('[Sync] Pull failed:',e); gymSyncStatus('offline'); _initialPullDone = true; return false; });
+}
+
+function gymSchedulePush() {
+  if (!_syncEnabled) return;
+  if (_syncTimer) clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => { gymPushToCloud(); }, 1500);
+}
+
+// Wrap localStorage.setItem AGAIN to trigger sync after auth wrapper
+const _origAuthSet = localStorage.setItem.bind(localStorage);
+const _origRawRemove = (function(){
+  // Capture the auth-wrapped removeItem so we can bypass when needed
+  return localStorage.removeItem.bind(localStorage);
+})();
+
+localStorage.setItem = function(k, v) {
+  const result = _origAuthSet(k, v);
+  if (k && k.startsWith('gym_') && k !== 'gym_last_modified' && k !== 'gym_seed_imported_v1' && _initialPullDone) {
+    _origAuthSet('gym_last_modified', String(Date.now()));
+    gymSchedulePush();
+  }
+  return result;
+};
+
+window.gymForceSync = function() { gymPushToCloud(); };
+window.gymForcePull = function() {
+  if (confirm('Pull data from cloud and replace local? Any unsaved local changes will be lost.')) {
+    gymPullFromCloud().then(updated => {
+      if (updated) location.reload();
+      else alert('Local data is already up to date.');
+    });
   }
 };
 
@@ -1731,6 +1877,17 @@ function setMigrationVersion(v) { localStorage.setItem('gym_migration_version', 
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('gym-user-badge');
   if (badge && window.gymCurrentUser) badge.textContent = '👤 ' + window.gymCurrentUser;
+  // Trigger initial cloud pull (async, doesn't block UI)
+  if (typeof gymPullFromCloud === 'function') {
+    gymPullFromCloud().then(updated => {
+      if (updated) {
+        // Remote had newer data - reload UI to reflect it
+        setTimeout(() => location.reload(), 200);
+      }
+    });
+  } else {
+    _initialPullDone = true;
+  }
   const today = new Date();
   document.getElementById('workout-date').value = formatDate(today);
   document.getElementById('workout-date-display').value = toDMY(formatDate(today));
