@@ -829,48 +829,189 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 
 <script>
 // ===================== AUTH GATE =====================
-// Simple client-side login. NOTE: this is not real security - source is visible.
-// To add more users, edit the USERS object below.
+// Hybrid auth: hardcoded admin user + Firestore-backed self-signup
 const USERS = {
   'FO': 'FO'
-  // Add more users like: 'username': 'password',
+  // Built-in admin/owner user
 };
+const _firebaseConfig = {
+  apiKey: "AIzaSyCP8qvTGzBdols1FSr5Q9EwMXvsJRkzAEY",
+  authDomain: "gym-tracker-5ce88.firebaseapp.com",
+  projectId: "gym-tracker-5ce88",
+  storageBucket: "gym-tracker-5ce88.firebasestorage.app",
+  messagingSenderId: "803243354020",
+  appId: "1:803243354020:web:95dd74fd1ae85b1f9fc331"
+};
+let _authDb = null;
+try {
+  if (typeof firebase !== 'undefined') {
+    if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(_firebaseConfig);
+    _authDb = firebase.firestore();
+  }
+} catch(e) { console.error('[Auth] Firebase init failed:', e); }
+
+async function _hashPassword(pw) {
+  try {
+    const buf = new TextEncoder().encode(pw + '_gymtracker_salt');
+    const hash = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+  } catch(e) {
+    // Fallback: simple string transform (not secure but works)
+    let h = 0;
+    for (let i=0;i<pw.length;i++) { h = ((h<<5)-h)+pw.charCodeAt(i); h |= 0; }
+    return 'fallback_' + h;
+  }
+}
+
+async function _tryAuth(u, p) {
+  if (!u || !p) return false;
+  // Check hardcoded admin user (case-insensitive)
+  for (const key of Object.keys(USERS)) {
+    if (key.toLowerCase() === u.toLowerCase() && USERS[key] === p) {
+      return key; // return the canonical key
+    }
+  }
+  // Check Firestore accounts
+  if (!_authDb) return false;
+  try {
+    const docRef = _authDb.collection('accounts').doc(u.toLowerCase());
+    const doc = await docRef.get();
+    if (!doc.exists) return false;
+    const data = doc.data();
+    const hash = await _hashPassword(p);
+    if (data.passwordHash === hash) return data.userId || u;
+    return false;
+  } catch(e) { console.error('[Auth] login check failed:',e); return false; }
+}
+
+async function _trySignup(u, p) {
+  if (!u || u.length < 2) return {error: 'User ID must be at least 2 characters'};
+  if (u.length > 30) return {error: 'User ID too long (max 30)'};
+  if (!/^[a-zA-Z0-9_-]+$/.test(u)) return {error: 'User ID can only contain letters, numbers, _ and -'};
+  if (!p || p.length < 4) return {error: 'Password must be at least 4 characters'};
+  // Block hardcoded usernames
+  for (const key of Object.keys(USERS)) {
+    if (key.toLowerCase() === u.toLowerCase()) return {error: 'This User ID is reserved'};
+  }
+  if (!_authDb) return {error: 'Cloud unavailable, try again later'};
+  try {
+    const docRef = _authDb.collection('accounts').doc(u.toLowerCase());
+    const existing = await docRef.get();
+    if (existing.exists) return {error: 'This User ID is already taken'};
+    const hash = await _hashPassword(p);
+    await docRef.set({
+      userId: u,
+      passwordHash: hash,
+      createdAt: Date.now()
+    });
+    return {success: true, userId: u};
+  } catch(e) { console.error('[Auth] signup failed:',e); return {error: 'Signup failed: ' + e.message}; }
+}
+
 let _activeUser = sessionStorage.getItem('gym_active_user');
 
-if (!_activeUser || USERS[_activeUser] === undefined) {
+if (!_activeUser) {
   // Show login screen and halt
   document.body.innerHTML = '<div class="login-screen"><div class="login-card">'
     + '<h1>GYM TRACKER PRO</h1>'
-    + '<div class="login-subtitle">Sign in to continue</div>'
+    + '<div class="login-subtitle" id="auth-subtitle">Sign in to continue</div>'
+    + '<div id="auth-form-login">'
     + '<label for="login-user">User ID</label>'
     + '<input id="login-user" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">'
     + '<label for="login-pass">Password</label>'
     + '<input id="login-pass" type="password" autocomplete="current-password">'
     + '<button class="login-btn" id="login-btn">Sign In</button>'
+    + '<div style="text-align:center;margin-top:14px;font-size:.82rem;color:var(--text2);">Don\'t have an account? <a href="#" id="show-signup" style="color:var(--highlight);text-decoration:none;font-weight:600;">Create one</a></div>'
+    + '</div>'
+    + '<div id="auth-form-signup" style="display:none;">'
+    + '<label for="signup-user">Choose a User ID</label>'
+    + '<input id="signup-user" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="2-30 characters, letters/numbers">'
+    + '<label for="signup-pass">Choose a Password</label>'
+    + '<input id="signup-pass" type="password" autocomplete="new-password" placeholder="Min 4 characters">'
+    + '<label for="signup-pass2">Confirm Password</label>'
+    + '<input id="signup-pass2" type="password" autocomplete="new-password">'
+    + '<button class="login-btn" id="signup-btn">Create Account</button>'
+    + '<div style="text-align:center;margin-top:14px;font-size:.82rem;color:var(--text2);">Already have an account? <a href="#" id="show-login" style="color:var(--highlight);text-decoration:none;font-weight:600;">Sign in</a></div>'
+    + '</div>'
     + '<div class="login-error" id="login-error"></div>'
-    + '<div class="login-footer">Your data is stored privately on your device. Each user has separate, isolated data.</div>'
+    + '<div class="login-footer">Your data syncs across devices automatically. Each account is private.</div>'
     + '</div></div>';
 
   const loginBtn = document.getElementById('login-btn');
+  const signupBtn = document.getElementById('signup-btn');
   const userInput = document.getElementById('login-user');
   const passInput = document.getElementById('login-pass');
+  const sUserInput = document.getElementById('signup-user');
+  const sPassInput = document.getElementById('signup-pass');
+  const sPass2Input = document.getElementById('signup-pass2');
   const errDiv = document.getElementById('login-error');
+  const formLogin = document.getElementById('auth-form-login');
+  const formSignup = document.getElementById('auth-form-signup');
+  const subtitle = document.getElementById('auth-subtitle');
 
-  function tryLogin() {
+  function showLogin() {
+    formLogin.style.display = 'block';
+    formSignup.style.display = 'none';
+    subtitle.textContent = 'Sign in to continue';
+    errDiv.textContent = '';
+    setTimeout(() => userInput.focus(), 50);
+  }
+  function showSignup() {
+    formLogin.style.display = 'none';
+    formSignup.style.display = 'block';
+    subtitle.textContent = 'Create a new account';
+    errDiv.textContent = '';
+    setTimeout(() => sUserInput.focus(), 50);
+  }
+  document.getElementById('show-signup').addEventListener('click', e => { e.preventDefault(); showSignup(); });
+  document.getElementById('show-login').addEventListener('click', e => { e.preventDefault(); showLogin(); });
+
+  async function tryLogin() {
     const u = userInput.value.trim();
     const p = passInput.value;
-    if (USERS[u] !== undefined && USERS[u] === p) {
-      sessionStorage.setItem('gym_active_user', u);
+    if (!u || !p) { errDiv.textContent = 'Enter both User ID and Password'; return; }
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Signing in...';
+    errDiv.textContent = '';
+    const canonicalUser = await _tryAuth(u, p);
+    if (canonicalUser) {
+      sessionStorage.setItem('gym_active_user', canonicalUser);
       location.reload();
     } else {
       errDiv.textContent = 'Invalid User ID or Password';
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Sign In';
       passInput.value = '';
       passInput.focus();
     }
   }
+
+  async function trySignup() {
+    const u = sUserInput.value.trim();
+    const p = sPassInput.value;
+    const p2 = sPass2Input.value;
+    if (p !== p2) { errDiv.textContent = 'Passwords do not match'; return; }
+    signupBtn.disabled = true;
+    signupBtn.textContent = 'Creating account...';
+    errDiv.textContent = '';
+    const result = await _trySignup(u, p);
+    if (result.success) {
+      sessionStorage.setItem('gym_active_user', result.userId);
+      location.reload();
+    } else {
+      errDiv.textContent = result.error || 'Signup failed';
+      signupBtn.disabled = false;
+      signupBtn.textContent = 'Create Account';
+    }
+  }
+
   loginBtn.addEventListener('click', tryLogin);
+  signupBtn.addEventListener('click', trySignup);
   userInput.addEventListener('keydown', e => { if (e.key === 'Enter') passInput.focus(); });
   passInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+  sUserInput.addEventListener('keydown', e => { if (e.key === 'Enter') sPassInput.focus(); });
+  sPassInput.addEventListener('keydown', e => { if (e.key === 'Enter') sPass2Input.focus(); });
+  sPass2Input.addEventListener('keydown', e => { if (e.key === 'Enter') trySignup(); });
   setTimeout(() => userInput.focus(), 100);
 
   throw new Error('AUTH_REQUIRED'); // Halt rest of script
@@ -916,16 +1057,8 @@ window.gymLogout = function() {
 };
 
 // ===================== FIREBASE CLOUD SYNC =====================
-const firebaseConfig = {
-  apiKey: "AIzaSyCP8qvTGzBdols1FSr5Q9EwMXvsJRkzAEY",
-  authDomain: "gym-tracker-5ce88.firebaseapp.com",
-  projectId: "gym-tracker-5ce88",
-  storageBucket: "gym-tracker-5ce88.firebasestorage.app",
-  messagingSenderId: "803243354020",
-  appId: "1:803243354020:web:95dd74fd1ae85b1f9fc331"
-};
-
-let _fbDb = null;
+// (Firebase already initialized in auth gate above)
+let _fbDb = _authDb;
 let _fbDocRef = null;
 let _syncEnabled = false;
 let _syncTimer = null;
@@ -933,13 +1066,11 @@ let _syncStatus = 'idle';
 let _initialPullDone = false;
 
 try {
-  if (typeof firebase !== 'undefined') {
-    firebase.initializeApp(firebaseConfig);
-    _fbDb = firebase.firestore();
+  if (_fbDb) {
     _fbDocRef = _fbDb.collection('users').doc(_activeUser);
     _syncEnabled = true;
   }
-} catch(e) { console.error('[Sync] Firebase init failed:', e); }
+} catch(e) { console.error('[Sync] Firestore ref failed:', e); }
 
 function gymSyncStatus(s) {
   _syncStatus = s;
