@@ -196,10 +196,10 @@ select{min-width:140px;cursor:pointer;}
 .insight-day-btn.active{background:var(--highlight);border-color:var(--highlight);color:#fff;}
 
 /* Responsive */
-/* === MOBILE COMPACT MODE v2 === */
+/* === MOBILE COMPACT MODE v3 === */
 @media(max-width:900px){
-  html{font-size:13px !important;} /* Shrinks all rem-based sizes proportionally */
-  body{font-size:12.5px;}
+  html{font-size:14px !important;} /* Shrinks all rem-based sizes proportionally */
+  body{font-size:13.5px;}
   .chart-grid{grid-template-columns:1fr;}
   .nav{flex-wrap:wrap;padding:0 8px;}
   .nav-brand{font-size:.95rem;padding:9px 6px 9px 0;letter-spacing:-.3px;}
@@ -310,8 +310,8 @@ select{min-width:140px;cursor:pointer;}
   .set-label{font-size:.78rem;min-width:80px;}
 }
 @media(max-width:500px){
-  html{font-size:12px !important;}
-  body{font-size:12px;}
+  html{font-size:13px !important;}
+  body{font-size:13px;}
   .nav-brand{display:none;}
   .nav-tab{padding:9px 10px;font-size:.74rem;}
   .container{padding:6px;}
@@ -572,7 +572,7 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
     <div class="nav-tab" data-view="admin" id="nav-admin" style="display:none;color:#f1c40f;">⚙ Admin</div>
   </div>
   <span class="gym-user-badge" id="gym-user-badge"></span>
-  <span id="gym-sync-status" style="font-size:.7rem;color:var(--text2);margin-left:8px;cursor:pointer;" onclick="gymForceSync()" title="Click to force sync">☁ Synced v2</span>
+  <span id="gym-sync-status" style="font-size:.7rem;color:var(--text2);margin-left:8px;cursor:pointer;" onclick="gymForceSync()" title="Click to force sync">☁ Synced v3</span>
   <button class="gym-logout-btn" onclick="gymLogout()">Logout</button>
 </nav>
 
