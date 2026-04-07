@@ -196,56 +196,149 @@ select{min-width:140px;cursor:pointer;}
 .insight-day-btn.active{background:var(--highlight);border-color:var(--highlight);color:#fff;}
 
 /* Responsive */
+/* === MOBILE COMPACT MODE === */
 @media(max-width:768px){
+  body{font-size:13px;}
   .chart-grid{grid-template-columns:1fr;}
-  .nav{flex-wrap:wrap;padding:0 10px;}
-  .nav-brand{font-size:1.05rem;padding:12px 8px 12px 0;}
-  .nav-tabs{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .nav{flex-wrap:wrap;padding:0 8px;}
+  .nav-brand{font-size:.95rem;padding:9px 6px 9px 0;letter-spacing:-.3px;}
+  .nav-tabs{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-wrap:nowrap;}
   .nav-tabs::-webkit-scrollbar{display:none;}
-  .nav-tab{padding:12px 14px;font-size:.82rem;flex-shrink:0;}
-  .container{padding:10px;}
-  .chip{padding:8px 14px;font-size:.8rem;}
-  input[type="number"]{width:65px;}
-  h2{font-size:1.25rem;margin-bottom:14px;}
-  h3{font-size:1rem;}
-  .card{padding:14px;margin-bottom:12px;}
-  .coach-grid{grid-template-columns:1fr 1fr;gap:8px;}
-  .coach-grid .card{padding:10px;}
-  .coach-ex-card{padding:12px;}
-  .btn{padding:10px 18px;font-size:.85rem;min-height:44px;}
-  .btn-sm{padding:8px 14px;font-size:.78rem;min-height:38px;}
-  /* Coach grade popup mobile */
-  .coach-grade-popup{width:96vw;max-height:88vh;padding:14px;}
-  .cgp-table th,.cgp-table td{padding:4px 3px;font-size:.7rem;}
-  .cgp-ex-name{font-size:.75rem;}
-  .cgp-ex-sets{font-size:.65rem;}
-  /* Tap targets */
-  .coach-grade{min-width:44px;min-height:44px;}
-  /* Calendar shrink */
-  .cal-day{min-height:55px;font-size:.78rem;padding:3px 1px;}
-  .cal-day .cal-day-tag{font-size:.62rem;}
-  /* Modals on mobile */
-  .modal{padding:18px;max-height:88vh;}
-  .exdb-modal{padding:16px;max-height:90vh;}
+  .nav-tab{padding:10px 12px;font-size:.78rem;flex-shrink:0;border-bottom-width:2px;}
+  .container{padding:8px;}
+  h2{font-size:1.05rem;margin-bottom:10px;font-weight:700;}
+  h3{font-size:.88rem;margin-bottom:8px;font-weight:700;}
+  .card{padding:10px 12px;margin-bottom:8px;border-radius:8px;}
+  .card-header{margin-bottom:8px;}
+  /* Chips */
+  .chip{padding:6px 11px;font-size:.74rem;border-width:1px;}
+  .chip-group{gap:6px;margin-bottom:12px;}
+  /* Inputs */
+  input[type="date"],input[type="number"],input[type="text"],select{padding:7px 10px;font-size:.85rem;}
+  input[type="number"]{width:58px;}
+  input[type="date"]{width:155px;}
+  select{min-width:115px;}
+  /* Buttons - keep min-height for touch but tighter padding */
+  .btn{padding:9px 16px;font-size:.8rem;min-height:40px;border-radius:6px;}
+  .btn-sm{padding:6px 12px;font-size:.74rem;min-height:34px;}
+  /* Coach grid - keep 2 columns even on small phones */
+  .coach-grid{grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;}
+  .coach-grid .card{padding:8px;}
+  /* Coach sub-nav - horizontally scrollable */
+  #coach-subnav{flex-wrap:nowrap !important;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:4px;margin-bottom:10px !important;}
+  #coach-subnav::-webkit-scrollbar{display:none;}
+  #coach-subnav .chip{flex-shrink:0;padding:6px 11px;font-size:.72rem;}
+  /* Coach exercise cards */
+  .coach-ex-card{padding:8px 10px;margin-bottom:6px;border-radius:6px;}
+  .coach-ex-header{margin-bottom:6px;}
+  .coach-ex-name{font-size:.8rem;}
+  /* Coach metrics */
+  .coach-metric{padding:5px 0;}
+  .coach-metric .cm-label{font-size:.76rem;}
+  .coach-metric .cm-value{font-size:.82rem;}
+  /* Coach grade circles */
+  .coach-grade{width:40px;height:40px;font-size:.95rem;}
+  .coach-grade[style*="32px"]{width:32px !important;height:32px !important;font-size:.72rem !important;}
+  /* Coach progress bars */
+  .coach-bar-container{height:16px;}
+  .coach-bar-fill{font-size:.6rem;padding-right:5px;}
+  /* Coach alerts */
+  .coach-alert{padding:10px 12px;margin-bottom:8px;font-size:.78rem;line-height:1.45;}
+  .coach-alert .alert-title{font-size:.82rem;margin-bottom:3px;}
+  /* Coach tags */
+  .coach-tag{padding:1px 6px;font-size:.62rem;margin-left:4px;}
+  /* Coach sections */
+  .coach-section{margin-bottom:16px;}
+  .coach-section h3{font-size:.88rem;padding-bottom:6px;margin-bottom:8px;}
+  /* Readiness gauge */
+  .readiness-circle{width:100px;height:100px;font-size:1.6rem;}
+  .readiness-circle span{width:75px !important;height:75px !important;font-size:1.5rem !important;}
+  .readiness-label{font-size:.75rem;}
+  .readiness-gauge{padding:14px;}
+  /* PR cards */
+  .pr-card{padding:10px 12px;margin-bottom:6px;}
+  .pr-card .pr-exercise{font-size:.85rem;}
+  .pr-card .pr-detail{font-size:.76rem;}
+  /* Coach grade popup */
+  .coach-grade-popup{width:94vw;max-height:85vh;padding:14px 16px;border-radius:10px;}
+  .cgp-table th,.cgp-table td{padding:3px;font-size:.68rem;}
+  .cgp-ex{padding:5px 7px;}
+  .cgp-ex-name{font-size:.72rem;}
+  .cgp-ex-sets{font-size:.62rem;}
+  .cgp-ex-pt{font-size:.66rem;}
+  /* Calendar */
+  .cal-day{min-height:48px;font-size:.74rem;padding:3px 1px;}
+  .cal-day .cal-day-num{font-size:.74rem;margin-bottom:1px;}
+  .cal-day .cal-day-tag{font-size:.58rem;}
+  .cal-day-label{font-size:.65rem;padding:6px 0;}
+  .cal-grid{gap:3px;}
+  .cal-header{margin-bottom:12px;}
+  /* Modals */
+  .modal{padding:16px;max-height:88vh;border-radius:10px;}
+  .exdb-modal{padding:14px;max-height:90vh;}
+  .modal h3{margin-bottom:12px;}
+  /* Filter bar */
+  .filter-bar{gap:8px;margin-bottom:14px;}
+  .filter-bar label{font-size:.78rem;}
+  /* Insight cards */
+  .insight-card{padding:12px;margin-bottom:8px;}
+  .insight-card .insight-title{font-size:.85rem;margin-bottom:4px;}
+  .insight-card .insight-value{font-size:1.4rem;margin-bottom:2px;}
+  .insight-card .insight-desc{font-size:.72rem;}
+  .insight-grid{gap:8px;margin-bottom:18px;}
+  .insight-section{margin-bottom:22px;}
+  /* Login screen */
+  .login-card{padding:28px 22px;}
+  .login-card h1{font-size:1.4rem;}
+  .login-card .login-subtitle{font-size:.78rem;margin-bottom:18px;}
+  .login-card label{font-size:.7rem;}
+  .login-card input{padding:11px 12px;font-size:.9rem;margin-bottom:12px;}
+  .login-card .login-btn{padding:12px;font-size:.9rem;}
+  /* User badge & sync */
+  .gym-user-badge{font-size:.66rem;padding:3px 8px;}
+  .gym-logout-btn{font-size:.7rem;padding:5px 10px;}
+  #gym-sync-status{font-size:.65rem !important;}
+  /* Exercise card */
+  .exercise-card{padding:12px;margin-bottom:10px;}
+  .exercise-card .exercise-name{font-size:.92rem;}
+  .set-table th{font-size:.68rem;padding:5px 6px;}
+  .set-table td{padding:3px 6px;}
+  .set-label{font-size:.78rem;min-width:80px;}
 }
 @media(max-width:480px){
-  .coach-grid{grid-template-columns:1fr;}
+  body{font-size:12.5px;}
   .nav-brand{display:none;}
-  .nav-tab{padding:12px 12px;font-size:.78rem;}
-  .container{padding:8px;}
-  .chip{padding:7px 12px;font-size:.75rem;}
-  h2{font-size:1.15rem;}
-  h3{font-size:.92rem;}
-  .card{padding:12px;}
-  input[type="date"]{width:160px;font-size:.85rem;}
-  input[type="number"]{width:60px;font-size:.85rem;}
-  select{min-width:120px;font-size:.82rem;}
-  .coach-bar-container{height:18px;}
-  .coach-bar-fill{font-size:.62rem;}
-  .coach-ex-card{padding:10px;}
-  .coach-ex-name{font-size:.85rem;}
-  .coach-metric{padding:6px 0;}
-  .coach-metric .cm-label,.coach-metric .cm-value{font-size:.78rem;}
+  .nav-tab{padding:9px 10px;font-size:.74rem;}
+  .container{padding:6px;}
+  .chip{padding:5px 10px;font-size:.7rem;}
+  h2{font-size:1rem;margin-bottom:8px;}
+  h3{font-size:.85rem;}
+  .card{padding:9px 10px;margin-bottom:7px;}
+  .coach-grid{gap:5px;}
+  .coach-grid .card{padding:7px;}
+  .coach-ex-card{padding:7px 9px;}
+  .coach-ex-name{font-size:.78rem;}
+  .coach-metric .cm-label{font-size:.72rem;}
+  .coach-metric .cm-value{font-size:.78rem;}
+  .coach-bar-container{height:14px;}
+  .coach-bar-fill{font-size:.58rem;}
+  .coach-alert{padding:8px 10px;font-size:.74rem;}
+  .coach-section h3{font-size:.84rem;}
+  .readiness-circle{width:90px;height:90px;}
+  .readiness-circle span{width:68px !important;height:68px !important;font-size:1.35rem !important;}
+  .pr-card{padding:8px 10px;}
+  /* Calendar even tighter */
+  .cal-day{min-height:42px;font-size:.7rem;}
+  .cal-day .cal-day-num{font-size:.68rem;}
+  .cal-day .cal-day-tag{font-size:.55rem;}
+  /* Coach popup */
+  .coach-grade-popup{padding:12px 14px;}
+  .cgp-table th,.cgp-table td{font-size:.64rem;}
+  /* Mini-month */
+  .mini-month{padding:8px;}
+  .mini-month-title{font-size:.78rem;}
+  .mini-cal-day{font-size:.55rem;}
+  .mini-cal-header{font-size:.5rem;}
 }
 /* iOS safe area + touch optimizations */
 @supports(padding:max(0px)) {
