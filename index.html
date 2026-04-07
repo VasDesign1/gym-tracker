@@ -867,6 +867,15 @@ async function _firebasePasswordFor(userPw) {
   }
 }
 
+async function _resolveUsername(user, fallback) {
+  // Use displayName if set (preserves original case). If not, set it now.
+  if (user.displayName && user.displayName.length > 0) return user.displayName;
+  try {
+    await user.updateProfile({ displayName: fallback });
+    return fallback;
+  } catch(e) { return fallback; }
+}
+
 async function _tryAuth(u, p) {
   if (!u || !p) return false;
   if (!_fbAuth) return false;
@@ -874,14 +883,15 @@ async function _tryAuth(u, p) {
   const fbPw = await _firebasePasswordFor(p);
   try {
     const result = await _fbAuth.signInWithEmailAndPassword(email, fbPw);
-    return result.user.email.split('@')[0]; // returns lowercase username
+    return await _resolveUsername(result.user, u);
   } catch(e) {
     // Special case: FO migration - if FO/FO doesn't exist yet, create it
     if (u.toUpperCase() === 'FO' && p === 'FO' && (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials')) {
       try {
         const result = await _fbAuth.createUserWithEmailAndPassword(email, fbPw);
+        await result.user.updateProfile({ displayName: 'FO' });
         console.log('[Auth] FO account created in Firebase Auth');
-        return result.user.email.split('@')[0];
+        return 'FO';
       } catch(e2) {
         console.error('[Auth] FO migration failed:', e2);
         return false;
@@ -903,7 +913,8 @@ async function _trySignup(u, p) {
   const fbPw = await _firebasePasswordFor(p);
   try {
     const result = await _fbAuth.createUserWithEmailAndPassword(email, fbPw);
-    return {success: true, userId: result.user.email.split('@')[0]};
+    await result.user.updateProfile({ displayName: u });
+    return {success: true, userId: u};
   } catch(e) {
     if (e.code === 'auth/email-already-in-use') return {error: 'This User ID is already taken'};
     if (e.code === 'auth/invalid-email') return {error: 'Invalid User ID format'};
@@ -1206,7 +1217,7 @@ window.gymForcePull = function() {
 // ===== ONE-TIME DATA SEED (auto-import existing logs from local backup) =====
 // Runs only once per user. Sets a flag after import to prevent re-running.
 (function() {
-  if (_activeUser !== 'FO') return;
+  if (_activeUser.toUpperCase() !== 'FO') return;
   if (localStorage.getItem('gym_seed_imported_v1')) return;
   const existing = localStorage.getItem('gym_workouts');
   if (existing && existing !== '[]') {
