@@ -1270,8 +1270,8 @@ function gymSyncStatus(s) {
   _syncStatus = s;
   const el = document.getElementById('gym-sync-status');
   if (el) {
-    const labels = {idle:'☁ Synced',syncing:'⟳ Syncing...',pulling:'⟳ Loading...',offline:'⚠ Offline',error:'⚠ Error'};
-    const colors = {idle:'var(--green)',syncing:'var(--orange)',pulling:'var(--blue)',offline:'var(--text2)',error:'#e74c3c'};
+    const labels = {idle:'☁ Synced',syncing:'⟳ Syncing...',pulling:'⟳ Loading...',offline:'⚠ Offline',error:'⚠ Error',pending:'● Pending push'};
+    const colors = {idle:'var(--green)',syncing:'var(--orange)',pulling:'var(--blue)',offline:'var(--text2)',error:'#e74c3c',pending:'var(--orange)'};
     el.textContent = labels[s] || s;
     el.style.color = colors[s] || 'var(--text2)';
   }
@@ -1292,8 +1292,11 @@ function gymCollectAllUserKeys() {
   return data;
 }
 
+let _lastPushedModified = 0;
 function gymPushToCloud() {
-  if (!_syncEnabled || !_fbDocRef) return Promise.resolve();
+  if (!_syncEnabled || !_fbDocRef) return Promise.resolve(false);
+  // Cancel any pending debounced push since we're pushing right now
+  if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
   gymSyncStatus('syncing');
   const data = gymCollectAllUserKeys();
   const ts = Date.now();
@@ -1302,9 +1305,11 @@ function gymPushToCloud() {
       // Use the AUTH-wrapped setItem (already in scope) but bypass our sync hook
       const _bypassSet = _origAuthSet;
       _bypassSet('gym_last_modified', String(ts));
+      _lastPushedModified = ts;
       gymSyncStatus('idle');
+      return true;
     })
-    .catch(e => { console.error('[Sync] Push failed:',e); gymSyncStatus('error'); });
+    .catch(e => { console.error('[Sync] Push failed:',e); gymSyncStatus('error'); return false; });
 }
 
 function gymPullFromCloud() {
@@ -1372,12 +1377,38 @@ localStorage.setItem = function(k, v) {
   const result = _origAuthSet(k, v);
   if (k && k.startsWith('gym_') && k !== 'gym_last_modified' && k !== 'gym_seed_imported_v1' && _initialPullDone) {
     _origAuthSet('gym_last_modified', String(Date.now()));
+    // Mark indicator as pending so the user sees there are unsynced changes
+    // (between the write and the debounced push completing).
+    if (_syncStatus !== 'syncing' && _syncStatus !== 'error' && _syncStatus !== 'offline') {
+      gymSyncStatus('pending');
+    }
     gymSchedulePush();
   }
   return result;
 };
 
 window.gymForceSync = function() { gymPushToCloud(); };
+
+// Flush any pending push immediately when the user backgrounds the tab,
+// closes the browser, or navigates away. iOS Safari is especially aggressive
+// about killing background tabs, and the 1.5s push debounce can otherwise
+// drop the most recent change. visibilitychange + pagehide together cover
+// every browser's exit path.
+function gymFlushPendingPush() {
+  if (!_syncEnabled) return;
+  if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
+  // Only push if there's actually a pending change (status would be 'pending')
+  // OR if local lastModified is ahead of the last successfully pushed timestamp.
+  const localMod = parseInt(localStorage.getItem('gym_last_modified') || '0');
+  if (_syncStatus === 'pending' || localMod > _lastPushedModified) {
+    gymPushToCloud();
+  }
+}
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'hidden') gymFlushPendingPush();
+});
+window.addEventListener('pagehide', gymFlushPendingPush);
+window.addEventListener('beforeunload', gymFlushPendingPush);
 window.gymForcePull = function() {
   if (confirm('Pull data from cloud and replace local? Any unsaved local changes will be lost.')) {
     gymPullFromCloud().then(updated => {
@@ -2005,8 +2036,29 @@ function getWorkouts() {
   }
 }
 function saveWorkouts(data) {
-  localStorage.setItem('gym_workouts', JSON.stringify(data));
+  // Returns true if the write was verified to have actually persisted to localStorage,
+  // false otherwise. Callers (especially user-initiated saves) should check the return value
+  // and surface a real error if it's false — never assume the write succeeded.
+  const json = JSON.stringify(data);
+  try {
+    localStorage.setItem('gym_workouts', json);
+  } catch(e) {
+    console.error('[Save] localStorage.setItem threw:', e);
+    if (typeof showToast === 'function') showToast('⚠ SAVE FAILED — storage error: ' + ((e && e.message) || 'unknown') + '. Your data was NOT saved.', 'error');
+    return false;
+  }
+  // Read-back verification: confirm the bytes are actually there.
+  // This catches silent failures (iOS Safari private mode, ITP eviction, quota issues,
+  // tab being killed mid-write, etc.) that don't throw but also don't persist.
+  let readBack;
+  try { readBack = localStorage.getItem('gym_workouts'); } catch(e) { readBack = null; }
+  if (readBack !== json) {
+    console.error('[Save] Write verification FAILED. Wrote', json.length, 'bytes, read back', (readBack == null ? 'null' : readBack.length + ' bytes'));
+    if (typeof showToast === 'function') showToast('⚠ SAVE FAILED — data did not persist to local storage. Try again, or check if you are in Private Browsing mode.', 'error');
+    return false;
+  }
   if (typeof invalidateTooltipCache === 'function') invalidateTooltipCache();
+  return true;
 }
 
 // ===================== DATA MIGRATION =====================
@@ -2428,11 +2480,18 @@ document.addEventListener('DOMContentLoaded', () => {
 function formatDate(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
-function showToast(msg) {
+function showToast(msg, type) {
   const t = document.getElementById('toast');
   t.textContent = msg;
+  // Color by type: success (default green), error (red), info (blue)
+  if (type === 'error') t.style.background = '#c0392b';
+  else if (type === 'info') t.style.background = 'var(--blue)';
+  else t.style.background = 'var(--green)';
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
+  // Errors stay visible longer so user actually notices them
+  const dur = (type === 'error') ? 6000 : 3000;
+  if (showToast._timer) clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => t.classList.remove('show'), dur);
 }
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('active');
@@ -2830,7 +2889,11 @@ function saveWorkout() {
     workouts.push(workout);
     workouts.sort((a,b) => a.date.localeCompare(b.date));
   }
-  saveWorkouts(workouts);
+  // CRITICAL: only proceed if the save was actually verified to have persisted.
+  // If saveWorkouts returns false it has already shown an error toast — abort here
+  // so we don't reset the form (the user's input is preserved for a retry) and so
+  // we don't show a misleading success message.
+  if (!saveWorkouts(workouts)) return;
 
   // Reset
   selectedParts.clear();
@@ -2842,7 +2905,25 @@ function saveWorkout() {
   document.getElementById('core-section').style.display = 'none';
   document.getElementById('peloton-section').style.display = 'none';
   document.getElementById('exercise-sections').innerHTML = '';
-  showToast('Workout saved successfully!');
+
+  // Saved locally and verified. Now confirm cloud sync. We push immediately
+  // (bypassing the 1.5s debounce) so the user gets an honest cloud-confirmed status
+  // before they background the app.
+  showToast('Saved locally — syncing to cloud...', 'info');
+  if (typeof gymPushToCloud === 'function') {
+    gymPushToCloud().then(ok => {
+      if (ok === false) {
+        showToast('⚠ Saved locally, but CLOUD SYNC FAILED. Other devices will not see this until you reconnect.', 'error');
+      } else {
+        showToast('✓ Workout saved & synced to cloud', 'success');
+      }
+    }).catch(e => {
+      console.error('[Save] cloud push threw:', e);
+      showToast('⚠ Saved locally, but CLOUD SYNC FAILED: ' + ((e && e.message) || 'unknown'), 'error');
+    });
+  } else {
+    showToast('Workout saved successfully!', 'success');
+  }
 }
 
 // ===================== CALENDAR =====================
