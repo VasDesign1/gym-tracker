@@ -225,10 +225,17 @@ select{min-width:140px;cursor:pointer;}
   /* Coach grid - keep 2 columns even on small phones */
   .coach-grid{grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;}
   .coach-grid .card{padding:8px;}
-  /* Coach sub-nav - horizontally scrollable */
-  #coach-subnav{flex-wrap:nowrap !important;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:4px;margin-bottom:10px !important;}
-  #coach-subnav::-webkit-scrollbar{display:none;}
-  #coach-subnav .chip{flex-shrink:0;padding:6px 11px;font-size:.72rem;}
+  /* Coach sub-nav - 4 per row grid on mobile so all options are visible at once */
+  #coach-subnav{display:grid !important;grid-template-columns:repeat(4,1fr) !important;gap:5px !important;flex-wrap:initial !important;overflow:visible !important;padding-bottom:0;margin-bottom:10px !important;}
+  #coach-subnav .chip{padding:7px 4px !important;font-size:.62rem !important;text-align:center;line-height:1.15;border-radius:8px;display:flex;align-items:center;justify-content:center;min-height:34px;word-break:break-word;hyphens:auto;}
+  /* Insights / Analytics filter chip rows: force one line on mobile, scroll if overflow */
+  #insight-day-buttons,#insight-bodypart-buttons,#analytics-day-buttons,#analytics-bodypart-buttons{
+    display:flex !important;flex-wrap:nowrap !important;overflow-x:auto !important;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:4px !important;padding-bottom:2px;
+  }
+  #insight-day-buttons::-webkit-scrollbar,#insight-bodypart-buttons::-webkit-scrollbar,#analytics-day-buttons::-webkit-scrollbar,#analytics-bodypart-buttons::-webkit-scrollbar{display:none;}
+  #insight-day-buttons .insight-day-btn,#insight-bodypart-buttons .insight-day-btn,#analytics-day-buttons .insight-day-btn,#analytics-bodypart-buttons .insight-day-btn{
+    flex-shrink:0;padding:5px 9px !important;font-size:.68rem !important;min-height:28px;white-space:nowrap;
+  }
   /* Coach exercise cards */
   .coach-ex-card{padding:8px 10px;margin-bottom:6px;border-radius:6px;}
   .coach-ex-header{margin-bottom:6px;}
@@ -2101,9 +2108,26 @@ function pickLogDate(ds) {
 }
 
 // ===================== STORAGE =====================
+// Strip the stray "Â" character from angle strings. This is mojibake left over
+// from a UTF-8/Latin-1 encoding mismatch that wrote "60Â°" instead of "60°".
+// Cleans data on every read so all render paths see correct values automatically.
+function _cleanWorkoutAngles(workouts) {
+  if (!Array.isArray(workouts)) return workouts;
+  for (let i = 0; i < workouts.length; i++) {
+    const w = workouts[i];
+    if (!w || !w.exercises) continue;
+    for (let j = 0; j < w.exercises.length; j++) {
+      const ex = w.exercises[j];
+      if (ex && typeof ex.angle === 'string' && ex.angle.indexOf('\u00C2') !== -1) {
+        ex.angle = ex.angle.replace(/\u00C2/g, '');
+      }
+    }
+  }
+  return workouts;
+}
 function getWorkouts() {
   try {
-    return JSON.parse(localStorage.getItem('gym_workouts') || '[]');
+    return _cleanWorkoutAngles(JSON.parse(localStorage.getItem('gym_workouts') || '[]'));
   } catch(e) {
     console.error('Corrupt workout data in localStorage:', e);
     showToast('Warning: workout data was corrupted. Attempting recovery...');
@@ -2142,7 +2166,7 @@ function saveWorkouts(data) {
 }
 
 // ===================== DATA MIGRATION =====================
-const MIGRATION_VERSION = 8;
+const MIGRATION_VERSION = 9;
 const currentMigVer = parseInt(localStorage.getItem('gym_migration_version') || '0');
 function setMigrationVersion(v) { localStorage.setItem('gym_migration_version', String(v)); }
 
@@ -2332,6 +2356,36 @@ function setMigrationVersion(v) { localStorage.setItem('gym_migration_version', 
   });
   if (changed) saveWorkouts(workouts);
   setMigrationVersion(Math.max(currentMigVer, 2));
+})();
+
+// Migration v9: clean the "Â" mojibake out of stored angle strings.
+// getWorkouts() also strips it on read as a safety net, but this migration
+// rewrites the stored data so the cleaned version gets pushed to the cloud
+// and propagates to all of the user's devices.
+(function migrateAngleEncoding() {
+  if (currentMigVer >= 9) return;
+  // Read raw localStorage so we can detect whether the bad bytes are actually
+  // present (getWorkouts() would already have cleaned them in memory).
+  let raw;
+  try { raw = localStorage.getItem('gym_workouts') || '[]'; } catch(e) { raw = '[]'; }
+  if (raw.indexOf('\u00C2') === -1) {
+    setMigrationVersion(Math.max(currentMigVer, 9));
+    return;
+  }
+  let workouts;
+  try { workouts = JSON.parse(raw); } catch(e) { workouts = []; }
+  let changed = false;
+  workouts.forEach(w => {
+    if (!w || !w.exercises) return;
+    w.exercises.forEach(ex => {
+      if (ex && typeof ex.angle === 'string' && ex.angle.indexOf('\u00C2') !== -1) {
+        ex.angle = ex.angle.replace(/\u00C2/g, '');
+        changed = true;
+      }
+    });
+  });
+  if (changed) saveWorkouts(workouts);
+  setMigrationVersion(Math.max(currentMigVer, 9));
 })();
 
 // ===================== INIT =====================
