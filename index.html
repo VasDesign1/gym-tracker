@@ -848,12 +848,12 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
       <button class="btn btn-secondary btn-sm" onclick="document.getElementById('coach-profile-setup').style.display='none'" style="margin-left:8px;">Cancel</button>
     </div>
     <div id="coach-nutrition-log" class="card" style="display:none;">
-      <h3>Log Today's Nutrition <span style="font-size:.75rem;color:var(--text2);font-weight:400;">(Optional)</span></h3>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
+      <h3>Log Today's Nutrition &amp; Bodyweight <span style="font-size:.75rem;color:var(--text2);font-weight:400;">(any field optional)</span></h3>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;align-items:flex-end;">
         <div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Protein (g)</label><input type="number" id="coach-protein" placeholder="200" min="0" style="width:90px;"></div>
         <div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Carbs (g)</label><input type="number" id="coach-carbs" placeholder="350" min="0" style="width:90px;"></div>
         <div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Fat (g)</label><input type="number" id="coach-fat" placeholder="90" min="0" style="width:90px;"></div>
-        <div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Bodyweight (kg)</label><input type="number" id="coach-daily-bw" placeholder="" min="30" max="300" style="width:100px;"></div>
+        <div style="padding:8px 12px;background:rgba(155,89,182,.12);border:1px solid rgba(155,89,182,.4);border-radius:6px;"><label style="font-size:.8rem;color:#c39bd3;font-weight:600;display:block;margin-bottom:4px;">⚖ Bodyweight (kg) <span style="color:var(--text2);font-weight:400;">- powers Body Composition tab</span></label><input type="number" id="coach-daily-bw" placeholder="e.g. 80" min="30" max="300" step="0.1" style="width:120px;"></div>
       </div>
       <button class="btn btn-success btn-sm" onclick="coachSaveNutrition()">Save Today's Log</button>
       <button class="btn btn-secondary btn-sm" onclick="document.getElementById('coach-nutrition-log').style.display='none'" style="margin-left:8px;">Close</button>
@@ -8518,36 +8518,66 @@ function renderNutritionCoach() {
 
 function renderBodyComp() {
   const bwLog = getBodyweightLog();
-  const dates = Object.keys(bwLog).sort();
+  let dates = Object.keys(bwLog).sort();
   const profile = getProfile();
 
   let html = '<div class="coach-section"><h3>Body Composition</h3>';
 
+  // Fallback: seed from profile weight if no log entries exist yet
+  if(!dates.length && profile && profile.weight) {
+    const t = todayStr();
+    bwLog[t] = profile.weight;
+    dates = [t];
+  }
+
   if(!dates.length) {
-    html += '<div class="coach-alert info">Log your daily bodyweight via the "Log Nutrition" button (bodyweight field) to track trends.</div>';
-    if(profile && profile.weight) html += '<div class="card"><h3>Profile Weight</h3><div class="coach-metric"><span class="cm-label">Current (from profile)</span><span class="cm-value">'+profile.weight+' kg</span></div></div>';
+    html += '<div class="coach-alert info">Set your profile weight or use the <strong>Log Nutrition</strong> button (Bodyweight field) to start tracking trends.</div>';
     html += '</div>';
     return html;
   }
 
+  // Date-based lookup: find entry closest to N days ago (within tolerance)
+  const today = dates[dates.length-1];
+  function nearestEntry(daysAgo, tolerance) {
+    let best = null, bestDiff = Infinity;
+    for(const d of dates) {
+      const diff = Math.abs(daysBetween(d, today) - daysAgo);
+      if(diff <= tolerance && diff < bestDiff) { best = d; bestDiff = diff; }
+    }
+    return best ? bwLog[best] : null;
+  }
+
   const weights = dates.map(d=>bwLog[d]);
   const current = weights[weights.length-1];
-  const weekAgo = dates.length>=7 ? weights[weights.length-7] : weights[0];
-  const monthAgo = dates.length>=30 ? weights[weights.length-30] : weights[0];
-  const weekChange = (current-weekAgo).toFixed(1);
-  const monthChange = (current-monthAgo).toFixed(1);
+  const weekAgoVal = nearestEntry(7, 3);   // ±3 days
+  const monthAgoVal = nearestEntry(30, 7); // ±7 days
+  const twoWeekAgoVal = nearestEntry(14, 4);
+  const weekChange = weekAgoVal!==null ? (current-weekAgoVal).toFixed(1) : null;
+  const monthChange = monthAgoVal!==null ? (current-monthAgoVal).toFixed(1) : null;
+  const onlyOne = dates.length===1;
+  const seededFromProfile = onlyOne && profile && profile.weight===current && !localStorage.getItem('gym_bodyweight_log');
 
   html += '<div class="coach-grid">';
-  html += '<div class="card"><h3>Current</h3><div style="text-align:center;font-size:2.5rem;font-weight:800;color:var(--highlight2);">'+current+' kg</div></div>';
+  html += '<div class="card"><h3>Current</h3><div style="text-align:center;font-size:2.5rem;font-weight:800;color:var(--highlight2);">'+current+' kg</div>';
+  if(seededFromProfile) html += '<div style="text-align:center;font-size:.75rem;color:var(--text2);margin-top:6px;">From profile - log via "Log Nutrition" to track trends</div>';
+  html += '</div>';
   html += '<div class="card"><h3>Trends</h3>';
-  html += '<div class="coach-metric"><span class="cm-label">7-Day Change</span><span class="cm-value"><span class="coach-trend '+(parseFloat(weekChange)>0?'up':'down')+'">'+( parseFloat(weekChange)>0?'+':'')+weekChange+' kg</span></span></div>';
-  html += '<div class="coach-metric"><span class="cm-label">30-Day Change</span><span class="cm-value"><span class="coach-trend '+(parseFloat(monthChange)>0?'up':'down')+'">'+( parseFloat(monthChange)>0?'+':'')+monthChange+' kg</span></span></div>';
-  const weeklyRate = dates.length>=14 ? ((current-weights[Math.max(0,weights.length-14)])/2).toFixed(2) : 'N/A';
-  html += '<div class="coach-metric"><span class="cm-label">Weekly Rate</span><span class="cm-value">'+weeklyRate+' kg/week</span></div>';
+  if(weekChange!==null) {
+    html += '<div class="coach-metric"><span class="cm-label">7-Day Change</span><span class="cm-value"><span class="coach-trend '+(parseFloat(weekChange)>0?'up':'down')+'">'+( parseFloat(weekChange)>0?'+':'')+weekChange+' kg</span></span></div>';
+  } else {
+    html += '<div class="coach-metric"><span class="cm-label">7-Day Change</span><span class="cm-value" style="color:var(--text2);">- need older entry -</span></div>';
+  }
+  if(monthChange!==null) {
+    html += '<div class="coach-metric"><span class="cm-label">30-Day Change</span><span class="cm-value"><span class="coach-trend '+(parseFloat(monthChange)>0?'up':'down')+'">'+( parseFloat(monthChange)>0?'+':'')+monthChange+' kg</span></span></div>';
+  } else {
+    html += '<div class="coach-metric"><span class="cm-label">30-Day Change</span><span class="cm-value" style="color:var(--text2);">- need older entry -</span></div>';
+  }
+  const weeklyRate = twoWeekAgoVal!==null ? ((current-twoWeekAgoVal)/2).toFixed(2) : null;
+  html += '<div class="coach-metric"><span class="cm-label">Weekly Rate</span><span class="cm-value">'+(weeklyRate!==null ? weeklyRate+' kg/week' : '<span style="color:var(--text2);">N/A</span>')+'</span></div>';
   html += '</div></div>';
 
   // Interpretation
-  if(typeof weeklyRate==='string' || Math.abs(parseFloat(weeklyRate))<=0.3) {
+  if(weeklyRate===null || Math.abs(parseFloat(weeklyRate))<=0.3) {
     html += '<div class="coach-alert success">Weight is stable - good for recomposition or maintenance.</div>';
   } else if(parseFloat(weeklyRate)>0.5) {
     html += '<div class="coach-alert warning">Gaining >0.5kg/week may indicate excessive fat gain. Consider reducing carbs by 50g on rest days.</div>';
@@ -9355,6 +9385,10 @@ window.coachSaveNutrition = function() {
   }
   showToast('Today\'s log saved!');
   document.getElementById('coach-nutrition-log').style.display='none';
+  // Refresh the active coach panel so saved data appears immediately
+  _coachCache = null;
+  const activeChip = document.querySelector('#coach-subnav .chip.selected');
+  if(activeChip) switchCoachPanel(activeChip.dataset.panel);
 };
 
 window.toggleCoachProfile = function() {
