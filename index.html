@@ -4516,13 +4516,32 @@ function saveCalLogWorkout() {
     workouts.push(workout);
     workouts.sort((a,b) => a.date.localeCompare(b.date));
   }
-  saveWorkouts(workouts);
+  // Verify the local write before doing anything else (mirrors saveWorkout()).
+  // saveWorkouts() will surface its own error toast on failure.
+  if (!saveWorkouts(workouts)) return;
 
-  showToast('Workout saved successfully!');
   const savedDate = calLogDate;
   closeCalLogForm();
   renderCalendar();
   showCalDay(savedDate);
+
+  // Confirm cloud sync explicitly so the user knows whether other devices
+  // will actually see this. Push immediately, bypassing the 1.5s debounce.
+  showToast('Saved locally — syncing to cloud...', 'info');
+  if (typeof gymPushToCloud === 'function') {
+    gymPushToCloud().then(ok => {
+      if (ok === false) {
+        showToast('⚠ Saved locally, but CLOUD SYNC FAILED. Other devices will not see this until you reconnect.', 'error');
+      } else {
+        showToast('✓ Workout saved & synced to cloud', 'success');
+      }
+    }).catch(e => {
+      console.error('[CalSave] cloud push threw:', e);
+      showToast('⚠ Saved locally, but CLOUD SYNC FAILED: ' + ((e && e.message) || 'unknown'), 'error');
+    });
+  } else {
+    showToast('Workout saved successfully!', 'success');
+  }
 }
 
 function deleteWorkout(dateStr) {
