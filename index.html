@@ -1366,6 +1366,74 @@ function gymSchedulePush() {
   _syncTimer = setTimeout(() => { gymPushToCloud(); }, 1500);
 }
 
+// ----- Real-time cloud listener (so the OTHER device updates without a refresh) -----
+// When a Firestore document changes, every client subscribed via onSnapshot is
+// notified within ~1 second. We use this to auto-pull remote changes pushed
+// from another device while this tab is open.
+function _gymRerenderActiveView() {
+  try {
+    const activeTab = document.querySelector('.nav-tab.active');
+    if (!activeTab) return;
+    const view = activeTab.dataset.view;
+    if (view === 'calendar' && typeof renderCalendar === 'function') renderCalendar();
+    else if (view === 'analytics' && typeof refreshAnalytics === 'function') refreshAnalytics();
+    else if (view === 'insights' && typeof populateInsightExercises === 'function') populateInsightExercises();
+    else if (view === 'coach' && typeof initCoachTab === 'function') initCoachTab();
+  } catch(e) { console.error('[Sync] re-render failed:', e); }
+}
+
+function _gymApplyRemoteData(remoteData, remoteModified) {
+  const _bypassSet = _origAuthSet;
+  const prefix = _activeUser + '_';
+  const PRESERVE = ['gym_seed_imported_v1','gym_last_modified'];
+  const toRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(prefix)) {
+      const gk = k.slice(prefix.length);
+      if (gk.startsWith('gym_') && PRESERVE.indexOf(gk) === -1) toRemove.push(k);
+    }
+  }
+  toRemove.forEach(k => { try { localStorage.removeItem(k.slice(prefix.length)); } catch(e){} });
+  Object.entries(remoteData).forEach(([k,v]) => { _bypassSet(k, v); });
+  _bypassSet('gym_last_modified', String(remoteModified));
+  _bypassSet('gym_seed_imported_v1', '1');
+}
+
+let _snapshotUnsub = null;
+function gymStartCloudListener() {
+  if (!_syncEnabled || !_fbDocRef || _snapshotUnsub) return;
+  try {
+    _snapshotUnsub = _fbDocRef.onSnapshot(function(doc) {
+      if (!doc || !doc.exists) return;
+      // Ignore events that came from our own local cache (offline echo)
+      if (doc.metadata && doc.metadata.fromCache) return;
+      const remote = doc.data() || {};
+      const remoteData = remote.data || {};
+      const remoteModified = remote.lastModified || 0;
+      // Skip: this is the echo of our own most-recent push
+      if (remoteModified === _lastPushedModified) return;
+      // Skip: nothing newer than what we already have
+      const localModified = parseInt(localStorage.getItem('gym_last_modified') || '0');
+      if (remoteModified <= localModified) return;
+      if (!remoteData || Object.keys(remoteData).length === 0) return;
+      console.log('[Sync] Remote change detected from another device, applying...');
+      _gymApplyRemoteData(remoteData, remoteModified);
+      _lastPushedModified = remoteModified; // we now match the cloud
+      _gymRerenderActiveView();
+      if (typeof showToast === 'function') showToast('↻ Updated from another device', 'info');
+    }, function(err) {
+      console.error('[Sync] onSnapshot error:', err);
+    });
+    console.log('[Sync] Real-time cloud listener active');
+  } catch(e) {
+    console.error('[Sync] Failed to start cloud listener:', e);
+  }
+}
+function gymStopCloudListener() {
+  if (_snapshotUnsub) { try { _snapshotUnsub(); } catch(e){} _snapshotUnsub = null; }
+}
+
 // Wrap localStorage.setItem AGAIN to trigger sync after auth wrapper
 const _origAuthSet = localStorage.setItem.bind(localStorage);
 const _origRawRemove = (function(){
@@ -2270,18 +2338,12 @@ document.addEventListener('DOMContentLoaded', () => {
     sessionStorage.setItem('gym_pulled_this_session','1');
     gymPullFromCloud().then(updated => {
       if (updated) {
-        try {
-          const activeTab = document.querySelector('.nav-tab.active');
-          if (activeTab) {
-            const view = activeTab.dataset.view;
-            if (view === 'calendar' && typeof renderCalendar === 'function') renderCalendar();
-            else if (view === 'analytics' && typeof refreshAnalytics === 'function') refreshAnalytics();
-            else if (view === 'insights' && typeof populateInsightExercises === 'function') populateInsightExercises();
-            else if (view === 'coach' && typeof initCoachTab === 'function') initCoachTab();
-          }
-          showToast && showToast('Data synced from cloud (' + window.gymCurrentUser + ')');
-        } catch(e) { console.error('[Sync] re-render failed:',e); }
+        _gymRerenderActiveView();
+        showToast && showToast('Data synced from cloud (' + window.gymCurrentUser + ')');
       }
+      // Start the real-time listener so this tab auto-updates whenever
+      // another device pushes a change.
+      if (typeof gymStartCloudListener === 'function') gymStartCloudListener();
     }).catch(e => { console.error('[Sync] initial pull failed:',e); _initialPullDone = true; });
   }
   if (typeof firebase !== 'undefined' && firebase.auth) {
