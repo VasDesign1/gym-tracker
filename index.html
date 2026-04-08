@@ -1363,7 +1363,19 @@ function gymPullFromCloud() {
 function gymSchedulePush() {
   if (!_syncEnabled) return;
   if (_syncTimer) clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(() => { gymPushToCloud(); }, 1500);
+  // Reduced from 1500ms → 250ms. The original 1.5s window was the cause of
+  // multiple data-loss incidents: users would background or close the tab
+  // before the push fired. 250ms is short enough that the push almost always
+  // completes in the same event loop tick as the user action, while still
+  // batching truly rapid sequential writes (form field updates, drag reorders).
+  _syncTimer = setTimeout(() => { gymPushToCloud(); }, 250);
+}
+
+// Helper used by user-facing actions (delete, edit, save) that want explicit
+// cloud confirmation. Cancels the debounced push and pushes right now.
+function gymPushNow() {
+  if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
+  return gymPushToCloud();
 }
 
 // ----- Real-time cloud listener (so the OTHER device updates without a refresh) -----
@@ -4610,9 +4622,23 @@ function deleteWorkout(dateStr) {
   if (!confirm('Delete ALL workouts for ' + dateStr + '?')) return;
   let workouts = getWorkouts();
   workouts = workouts.filter(w => w.date !== dateStr);
-  saveWorkouts(workouts);
+  if (!saveWorkouts(workouts)) return;
   renderCalendar();
-  showToast('Workout(s) deleted');
+  // Push the deletion to the cloud immediately and confirm — never trust
+  // the debounced push for destructive actions, since users frequently close
+  // the tab right after deleting.
+  showToast('Deleting & syncing to cloud...', 'info');
+  if (typeof gymPushNow === 'function') {
+    gymPushNow().then(ok => {
+      if (ok === false) showToast('⚠ Deleted locally, but CLOUD SYNC FAILED. The deletion may not appear on other devices.', 'error');
+      else showToast('✓ Workout(s) deleted & synced', 'success');
+    }).catch(e => {
+      console.error('[Delete] cloud push threw:', e);
+      showToast('⚠ Deleted locally, but CLOUD SYNC FAILED: ' + ((e && e.message) || 'unknown'), 'error');
+    });
+  } else {
+    showToast('Workout(s) deleted', 'success');
+  }
 }
 
 function deleteWorkoutByIndex(globalIdx) {
@@ -4621,11 +4647,23 @@ function deleteWorkoutByIndex(globalIdx) {
   const dateStr = workouts[globalIdx].date;
   if (!confirm('Delete this workout?')) return;
   workouts.splice(globalIdx, 1);
-  saveWorkouts(workouts);
+  if (!saveWorkouts(workouts)) return;
   renderCalendar();
   showCalDay(dateStr);
-  showToast('Workout deleted');
   refreshAnalyticsAndInsights();
+  // Same explicit cloud-confirm as deleteWorkout above.
+  showToast('Deleting & syncing to cloud...', 'info');
+  if (typeof gymPushNow === 'function') {
+    gymPushNow().then(ok => {
+      if (ok === false) showToast('⚠ Deleted locally, but CLOUD SYNC FAILED. The deletion may not appear on other devices.', 'error');
+      else showToast('✓ Workout deleted & synced', 'success');
+    }).catch(e => {
+      console.error('[Delete] cloud push threw:', e);
+      showToast('⚠ Deleted locally, but CLOUD SYNC FAILED: ' + ((e && e.message) || 'unknown'), 'error');
+    });
+  } else {
+    showToast('Workout deleted', 'success');
+  }
 }
 
 function formatSetLabel(key) {
