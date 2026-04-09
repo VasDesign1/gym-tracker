@@ -3388,6 +3388,20 @@ function showCalDay(dateStr) {
       </div>`;
     }
 
+    // Weight type editor (per arm/leg, per side, total) - hidden for bodyweight & assisted exercises
+    if (!isBWExerciseName(ex.name) && ex.name !== 'Assisted Pull-ups') {
+      const cwt = ex.weightType || 'total';
+      const perArmLabel = getPerArmLabel(ex.bodyPart || ex.name);
+      html += `<div class="cal-edit-ctrl" style="margin-bottom:8px;margin-left:42px;display:flex;align-items:center;gap:8px;font-size:.8rem;flex-wrap:wrap;">
+        <span style="color:var(--text2);">Weight type:</span>
+        <div class="weight-type-group" style="gap:0;">
+          <button class="weight-type-btn${cwt==='per_arm'?' active':''}" style="padding:2px 10px;font-size:.72rem;" onclick="setCalWeightTypeDirect(${workoutGlobalIdx},${exIdx},'per_arm','${dateStr}')">${perArmLabel}</button>
+          <button class="weight-type-btn${cwt==='per_side'?' active':''}" style="padding:2px 10px;font-size:.72rem;" onclick="setCalWeightTypeDirect(${workoutGlobalIdx},${exIdx},'per_side','${dateStr}')">Per Side</button>
+          <button class="weight-type-btn${cwt==='total'?' active':''}" style="padding:2px 10px;font-size:.72rem;" onclick="setCalWeightTypeDirect(${workoutGlobalIdx},${exIdx},'total','${dateStr}')">Total</button>
+        </div>
+      </div>`;
+    }
+
     if (setKeys.length === 0) {
       html += `<div style="color:var(--text2);font-size:.85rem;padding-left:42px;">No sets logged</div>`;
     } else {
@@ -3774,6 +3788,17 @@ function setCalPulleyDirect(globalIdx, exIdx, type, dateStr) {
   saveWorkouts(workouts);
   showCalDay(dateStr);
   refreshAnalyticsAndInsights();
+}
+
+function setCalWeightTypeDirect(globalIdx, exIdx, type, dateStr) {
+  const workouts = getWorkouts();
+  const workout = workouts[globalIdx];
+  if (!workout || !workout.exercises[exIdx]) return;
+  workout.exercises[exIdx].weightType = type;
+  saveWorkouts(workouts);
+  showCalDay(dateStr);
+  refreshAnalyticsAndInsights();
+  showToast('Weight type updated');
 }
 
 function setCalPulleyInPanel(globalIdx, exIdx, type) {
