@@ -6627,8 +6627,8 @@ let _cacheKey = '';
 
 function getProfile() { try { return JSON.parse(localStorage.getItem('gym_coach_profile')||'null'); } catch(e) { return null; } }
 function saveProfileData(p) { localStorage.setItem('gym_coach_profile', JSON.stringify(p)); }
-function getNutritionLog() { try { return JSON.parse(localStorage.getItem('gym_nutrition_log')||'{}'); } catch(e) { return {}; } }
-function getBodyweightLog() { try { return JSON.parse(localStorage.getItem('gym_bodyweight_log')||'{}'); } catch(e) { return {}; } }
+function getNutritionLog() { try { const v=JSON.parse(localStorage.getItem('gym_nutrition_log')||'{}'); return (v&&typeof v==='object')?v:{}; } catch(e) { return {}; } }
+function getBodyweightLog() { try { const v=JSON.parse(localStorage.getItem('gym_bodyweight_log')||'{}'); return (v&&typeof v==='object')?v:{}; } catch(e) { return {}; } }
 function todayStr() { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function daysBetween(a,b) { return Math.round((new Date(b)-new Date(a))/86400000); }
 function hoursSince(dateStr) { return (Date.now()-new Date(dateStr+'T12:00:00').getTime())/3600000; }
