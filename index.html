@@ -3794,7 +3794,50 @@ function setCalWeightTypeDirect(globalIdx, exIdx, type, dateStr) {
   const workouts = getWorkouts();
   const workout = workouts[globalIdx];
   if (!workout || !workout.exercises[exIdx]) return;
-  workout.exercises[exIdx].weightType = type;
+  const ex = workout.exercises[exIdx];
+  const fromType = ex.weightType || 'total';
+  if (fromType === type) return;
+
+  // Decide whether to also convert numeric kg values.
+  // per_arm and per_side are both "per limb" - equivalent numerically.
+  // Switching between per-limb and total scales by 2.
+  const fromPerLimb = fromType === 'per_arm' || fromType === 'per_side';
+  const toPerLimb = type === 'per_arm' || type === 'per_side';
+  let factor = 1;
+  if (fromPerLimb && !toPerLimb) factor = 2;        // per limb -> total
+  else if (!fromPerLimb && toPerLimb) factor = 0.5; // total -> per limb
+
+  // Only prompt for conversion if it would actually change values
+  const setKeys = Object.keys(ex.sets || {});
+  const hasValues = setKeys.some(k => {
+    const kg = parseFloat(ex.sets[k] && ex.sets[k].kg);
+    return !isNaN(kg) && kg > 0;
+  });
+
+  if (factor !== 1 && hasValues) {
+    // Build a preview from the first non-zero set so the user sees the math
+    let previewOld = null, previewNew = null;
+    for (const k of setKeys) {
+      const kg = parseFloat(ex.sets[k] && ex.sets[k].kg);
+      if (!isNaN(kg) && kg > 0) { previewOld = kg; previewNew = +(kg * factor).toFixed(2); break; }
+    }
+    const fromLabel = fromPerLimb ? (fromType === 'per_arm' ? 'per arm/leg' : 'per side') : 'total';
+    const toLabel = toPerLimb ? (type === 'per_arm' ? 'per arm/leg' : 'per side') : 'total';
+    const msg = 'Convert kg values too?\n\n' +
+      'Switching from "' + fromLabel + '" to "' + toLabel + '".\n' +
+      'Example: ' + previewOld + ' kg ' + fromLabel + '  ->  ' + previewNew + ' kg ' + toLabel + '\n\n' +
+      'OK = convert all set values\nCancel = keep numbers as-is (label only)';
+    if (confirm(msg)) {
+      setKeys.forEach(k => {
+        const s = ex.sets[k];
+        if (!s) return;
+        const kg = parseFloat(s.kg);
+        if (!isNaN(kg) && kg > 0) s.kg = +(kg * factor).toFixed(2);
+      });
+    }
+  }
+
+  ex.weightType = type;
   saveWorkouts(workouts);
   showCalDay(dateStr);
   refreshAnalyticsAndInsights();
