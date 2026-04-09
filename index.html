@@ -3823,10 +3823,13 @@ function setCalWeightTypeDirect(globalIdx, exIdx, type, dateStr) {
     }
     const fromLabel = fromPerLimb ? (fromType === 'per_arm' ? 'per arm/leg' : 'per side') : 'total';
     const toLabel = toPerLimb ? (type === 'per_arm' ? 'per arm/leg' : 'per side') : 'total';
-    const msg = 'Convert kg values too?\n\n' +
-      'Switching from "' + fromLabel + '" to "' + toLabel + '".\n' +
-      'Example: ' + previewOld + ' kg ' + fromLabel + '  ->  ' + previewNew + ' kg ' + toLabel + '\n\n' +
-      'OK = convert all set values\nCancel = keep numbers as-is (label only)';
+    const msg = 'Switching from "' + fromLabel + '" to "' + toLabel + '".\n\n' +
+      'Were the original kg values entered correctly?\n\n' +
+      '[Cancel]  Fix a mistake - keep ' + previewOld + ' kg as the new "' + toLabel + '" value.\n' +
+      '          (All analytics recalculate from the new label - this is what you want\n' +
+      '          if you accidentally picked the wrong weight type when logging.)\n\n' +
+      '[OK]      Unit conversion - I really lifted ' + previewOld + ' kg ' + fromLabel + ',\n' +
+      '          so scale to ' + previewNew + ' kg ' + toLabel + ' (physically equivalent).';
     if (confirm(msg)) {
       setKeys.forEach(k => {
         const s = ex.sets[k];
