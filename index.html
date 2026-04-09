@@ -3798,7 +3798,6 @@ function setCalWeightTypeDirect(globalIdx, exIdx, type, dateStr) {
   const fromType = ex.weightType || 'total';
   if (fromType === type) return;
 
-  // Decide whether to also convert numeric kg values.
   // per_arm and per_side are both "per limb" - equivalent numerically.
   // Switching between per-limb and total scales by 2.
   const fromPerLimb = fromType === 'per_arm' || fromType === 'per_side';
@@ -3807,44 +3806,125 @@ function setCalWeightTypeDirect(globalIdx, exIdx, type, dateStr) {
   if (fromPerLimb && !toPerLimb) factor = 2;        // per limb -> total
   else if (!fromPerLimb && toPerLimb) factor = 0.5; // total -> per limb
 
-  // Only prompt for conversion if it would actually change values
   const setKeys = Object.keys(ex.sets || {});
   const hasValues = setKeys.some(k => {
     const kg = parseFloat(ex.sets[k] && ex.sets[k].kg);
     return !isNaN(kg) && kg > 0;
   });
 
-  if (factor !== 1 && hasValues) {
-    // Build a preview from the first non-zero set so the user sees the math
-    let previewOld = null, previewNew = null;
-    for (const k of setKeys) {
-      const kg = parseFloat(ex.sets[k] && ex.sets[k].kg);
-      if (!isNaN(kg) && kg > 0) { previewOld = kg; previewNew = +(kg * factor).toFixed(2); break; }
-    }
-    const fromLabel = fromPerLimb ? (fromType === 'per_arm' ? 'per arm/leg' : 'per side') : 'total';
-    const toLabel = toPerLimb ? (type === 'per_arm' ? 'per arm/leg' : 'per side') : 'total';
-    const msg = 'Switching from "' + fromLabel + '" to "' + toLabel + '".\n\n' +
-      'Were the original kg values entered correctly?\n\n' +
-      '[Cancel]  Fix a mistake - keep ' + previewOld + ' kg as the new "' + toLabel + '" value.\n' +
-      '          (All analytics recalculate from the new label - this is what you want\n' +
-      '          if you accidentally picked the wrong weight type when logging.)\n\n' +
-      '[OK]      Unit conversion - I really lifted ' + previewOld + ' kg ' + fromLabel + ',\n' +
-      '          so scale to ' + previewNew + ' kg ' + toLabel + ' (physically equivalent).';
-    if (confirm(msg)) {
-      setKeys.forEach(k => {
-        const s = ex.sets[k];
-        if (!s) return;
-        const kg = parseFloat(s.kg);
-        if (!isNaN(kg) && kg > 0) s.kg = +(kg * factor).toFixed(2);
-      });
-    }
+  // No conversion math needed (per_arm <-> per_side, or all-zero sets):
+  // apply the switch immediately, no modal.
+  if (factor === 1 || !hasValues) {
+    applyCalWeightTypeChange(globalIdx, exIdx, type, dateStr, false);
+    return;
   }
 
+  // Build a preview from the first non-zero set so the user sees the math
+  let previewOld = null, previewNew = null;
+  for (const k of setKeys) {
+    const kg = parseFloat(ex.sets[k] && ex.sets[k].kg);
+    if (!isNaN(kg) && kg > 0) { previewOld = kg; previewNew = +(kg * factor).toFixed(2); break; }
+  }
+  const fromLabel = fromPerLimb ? (fromType === 'per_arm' ? 'per arm/leg' : 'per side') : 'total';
+  const toLabel = toPerLimb ? (type === 'per_arm' ? 'per arm/leg' : 'per side') : 'total';
+
+  showWeightTypeChangeDialog({
+    exName: ex.name,
+    fromLabel, toLabel, previewOld, previewNew, factor,
+    onKeep: () => applyCalWeightTypeChange(globalIdx, exIdx, type, dateStr, false),
+    onConvert: () => applyCalWeightTypeChange(globalIdx, exIdx, type, dateStr, true)
+  });
+}
+
+function applyCalWeightTypeChange(globalIdx, exIdx, type, dateStr, convertValues) {
+  const workouts = getWorkouts();
+  const workout = workouts[globalIdx];
+  if (!workout || !workout.exercises[exIdx]) return;
+  const ex = workout.exercises[exIdx];
+  const fromType = ex.weightType || 'total';
+  const fromPerLimb = fromType === 'per_arm' || fromType === 'per_side';
+  const toPerLimb = type === 'per_arm' || type === 'per_side';
+  let factor = 1;
+  if (fromPerLimb && !toPerLimb) factor = 2;
+  else if (!fromPerLimb && toPerLimb) factor = 0.5;
+
+  if (convertValues && factor !== 1) {
+    Object.keys(ex.sets || {}).forEach(k => {
+      const s = ex.sets[k];
+      if (!s) return;
+      const kg = parseFloat(s.kg);
+      if (!isNaN(kg) && kg > 0) s.kg = +(kg * factor).toFixed(2);
+    });
+  }
   ex.weightType = type;
   saveWorkouts(workouts);
   showCalDay(dateStr);
   refreshAnalyticsAndInsights();
-  showToast('Weight type updated');
+  showToast(convertValues ? 'Weight type updated and values converted' : 'Weight type updated');
+}
+
+function showWeightTypeChangeDialog(opts) {
+  const overlay = document.getElementById('modal-overlay');
+  const content = document.getElementById('modal-content');
+  if (!overlay || !content) return;
+
+  const { exName, fromLabel, toLabel, previewOld, previewNew, onKeep, onConvert } = opts;
+
+  // Pick clearer button labels based on direction (divide vs multiply)
+  const isDividing = previewNew < previewOld;
+  const convertVerb = isDividing ? 'Divide' : 'Multiply';
+  const convertHint = isDividing
+    ? 'Splits each kg in half (one limb only).'
+    : 'Doubles each kg (combines both limbs).';
+
+  content.innerHTML = `
+    <button class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>
+    <h3 style="margin-top:0;">Change Weight Type</h3>
+    <div style="font-size:.9rem;color:var(--text2);margin-bottom:6px;">${escapeHtml(exName)}</div>
+    <div style="font-size:.95rem;margin-bottom:18px;">
+      Switching from <strong style="color:var(--highlight2);">${fromLabel}</strong>
+      to <strong style="color:var(--highlight2);">${toLabel}</strong>.
+    </div>
+    <div style="background:var(--accent);padding:12px;border-radius:8px;margin-bottom:18px;font-size:.85rem;color:var(--text2);">
+      How should the existing kg values be treated? Pick the option that matches what really happened.
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+
+      <button class="btn btn-primary" id="wtc-keep" style="text-align:left;padding:14px 16px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;white-space:normal;">
+        <span style="font-weight:700;font-size:1rem;">Keep the weight (fix a mistake)</span>
+        <span style="font-size:.82rem;font-weight:400;opacity:.95;">
+          The original entry was wrong - keep <strong>${previewOld} kg</strong> but treat it as <strong>${toLabel}</strong> from now on.
+          All analytics, PRs, and Smart Coach metrics will recalculate from the new label.
+        </span>
+        <span style="font-size:.78rem;font-weight:400;opacity:.85;">
+          Use this if you accidentally picked the wrong weight type when logging.
+        </span>
+      </button>
+
+      <button class="btn btn-secondary" id="wtc-convert" style="text-align:left;padding:14px 16px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;white-space:normal;">
+        <span style="font-weight:700;font-size:1rem;">${convertVerb} the weight (unit conversion)</span>
+        <span style="font-size:.82rem;font-weight:400;opacity:.95;">
+          The original number was correct for "${fromLabel}". Scale to the equivalent "${toLabel}" value:
+          <strong>${previewOld} kg</strong> → <strong>${previewNew} kg</strong>.
+        </span>
+        <span style="font-size:.78rem;font-weight:400;opacity:.85;">
+          ${convertHint} Use this if you actually lifted that weight per limb / per side and just want a different display unit.
+        </span>
+      </button>
+
+      <button class="btn" id="wtc-cancel" style="background:transparent;border:1px solid var(--border);color:var(--text2);padding:10px 16px;">
+        Cancel - don't change anything
+      </button>
+
+    </div>
+  `;
+
+  overlay.classList.add('active');
+
+  document.getElementById('wtc-keep').onclick = () => { closeModal(); onKeep && onKeep(); };
+  document.getElementById('wtc-convert').onclick = () => { closeModal(); onConvert && onConvert(); };
+  document.getElementById('wtc-cancel').onclick = () => closeModal();
 }
 
 function setCalPulleyInPanel(globalIdx, exIdx, type) {
