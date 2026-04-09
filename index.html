@@ -2014,7 +2014,7 @@ function renderLogDatePicker() {
 
   const firstDay = new Date(ldpYear, ldpMonth, 1);
   const lastDay = new Date(ldpYear, ldpMonth + 1, 0);
-  const startDow = firstDay.getDay();
+  const startDow = mondayDow(firstDay);
   const totalDays = lastDay.getDate();
 
   let html = `<div class="ldp-header">
@@ -2023,7 +2023,7 @@ function renderLogDatePicker() {
     <button class="ldp-nav" onclick="ldpNav(1)">&rarr;</button>
   </div><div class="ldp-grid">`;
 
-  ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(d => { html += `<div class="ldp-day-label">${d}</div>`; });
+  ['Mo','Tu','We','Th','Fr','Sa','Su'].forEach(d => { html += `<div class="ldp-day-label">${d}</div>`; });
 
   const prevLast = new Date(ldpYear, ldpMonth, 0).getDate();
   for (let i = startDow - 1; i >= 0; i--) {
@@ -2039,7 +2039,7 @@ function renderLogDatePicker() {
     html += `<div class="${cls.join(' ')}" onclick="pickLogDate('${ds}')">${d}</div>`;
   }
 
-  const endDow = lastDay.getDay();
+  const endDow = mondayDow(lastDay);
   for (let i = 1; i <= 6 - endDow; i++) {
     html += `<div class="ldp-day other">${i}</div>`;
   }
@@ -2608,6 +2608,22 @@ document.addEventListener('DOMContentLoaded', () => {
 function formatDate(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
+// === Week is Monday -> Sunday ===
+// mondayDow: 0=Mon, 1=Tue, ..., 6=Sun (use this for calendar column offsets)
+function mondayDow(date) {
+  const d = (date instanceof Date) ? date : new Date(date);
+  const dow = d.getDay(); // native: 0=Sun..6=Sat
+  return (dow === 0) ? 6 : dow - 1;
+}
+// Returns the Monday on or before the given date (time zeroed)
+function getMondayWeekStart(date) {
+  const d = (date instanceof Date) ? new Date(date) : new Date(date);
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() - mondayDow(d));
+  return d;
+}
+// YYYY-MM-DD key for the Monday of the week containing this date
+function mondayWeekKey(date) { return formatDate(getMondayWeekStart(date)); }
 function showToast(msg, type) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -3090,13 +3106,13 @@ function renderYearView() {
     workoutMap[w.date].push(w);
   });
   const today = formatDate(new Date());
-  const dayLabels = ['S','M','T','W','T','F','S'];
+  const dayLabels = ['M','T','W','T','F','S','S'];
 
   let html = '';
   for (let m = 0; m < 12; m++) {
     const firstDay = new Date(calYear, m, 1);
     const lastDay = new Date(calYear, m + 1, 0);
-    const startDow = firstDay.getDay();
+    const startDow = mondayDow(firstDay);
     const totalDays = lastDay.getDate();
 
     // Count workouts this month
@@ -3127,7 +3143,7 @@ function renderYearView() {
     }
 
     // Next month padding
-    const endDow = lastDay.getDay();
+    const endDow = mondayDow(lastDay);
     for (let i = 1; i <= 6 - endDow; i++) {
       html += `<div class="mini-cal-day other">${i}</div>`;
     }
@@ -3164,11 +3180,11 @@ function renderCalendar() {
 
   const firstDay = new Date(calYear, calMonth, 1);
   const lastDay = new Date(calYear, calMonth + 1, 0);
-  const startDow = firstDay.getDay(); // 0=Sun
+  const startDow = mondayDow(firstDay); // 0=Mon..6=Sun
   const totalDays = lastDay.getDate();
   const today = formatDate(new Date());
 
-  let html = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => `<div class="cal-day-label">${d}</div>`).join('');
+  let html = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => `<div class="cal-day-label">${d}</div>`).join('');
 
   // Previous month padding
   const prevLast = new Date(calYear, calMonth, 0).getDate();
@@ -3221,7 +3237,7 @@ function renderCalendar() {
   }
 
   // Next month padding
-  const endDow = lastDay.getDay();
+  const endDow = mondayDow(lastDay);
   for (let i = 1; i <= 6 - endDow; i++) {
     const nDate = new Date(calYear, calMonth + 1, i);
     const nDateStr = formatDate(nDate);
@@ -5597,9 +5613,7 @@ function renderChartWeekly(workouts, exFilter) {
   const weekMeta = {};
   data.forEach(d => {
     const dt = new Date(d.date + 'T00:00:00');
-    const weekStart = new Date(dt);
-    weekStart.setDate(dt.getDate() - dt.getDay());
-    const wk = formatDate(weekStart);
+    const wk = mondayWeekKey(dt);
     byWeek[wk] = (byWeek[wk]||0) + d.volume;
     if (!weekMeta[wk]) weekMeta[wk] = {};
     if (!weekMeta[wk][d.exercise]) weekMeta[wk][d.exercise] = { bodyPart: d.bodyPart, maxKg: 0, totalReps: 0, sets: 0, volume: 0 };
@@ -5984,9 +5998,7 @@ function groupByPeriod(records, period) {
       key = toDMY(r.date);
     } else if (period === 'weekly') {
       const d = new Date(r.date + 'T00:00:00');
-      const ws = new Date(d);
-      ws.setDate(d.getDate() - d.getDay());
-      sortKey = formatDate(ws);
+      sortKey = mondayWeekKey(d);
       key = 'Wk ' + toDMY(sortKey);
     } else {
       sortKey = r.date.slice(0, 7);
@@ -6904,11 +6916,10 @@ function buildCache() {
     });
   });
 
-  // Weekly volumes
+  // Weekly volumes (Monday-aligned)
   workouts.forEach(w => {
     const d = new Date(w.date+'T12:00:00');
-    const weekStart = new Date(d); weekStart.setDate(d.getDate()-d.getDay());
-    const wk = formatDate(weekStart);
+    const wk = mondayWeekKey(d);
     if(!weeklyVolume[wk]) weeklyVolume[wk]={};
     (w.exercises||[]).forEach(ex => {
       const bp = ex.bodyPart || getBodyPartForExercise(resolveExerciseName(ex.name)) || 'other';
@@ -6930,9 +6941,7 @@ function buildCache() {
 
 function getCurrentWeekVolume() {
   const c = buildCache();
-  const today = new Date();
-  const weekStart = new Date(today); weekStart.setDate(today.getDate()-today.getDay());
-  const wk = formatDate(weekStart);
+  const wk = mondayWeekKey(new Date());
   return c.weeklyVolume[wk]||{};
 }
 
@@ -7437,9 +7446,7 @@ function getStreak() {
   if(!c.workouts.length) return {current:0,longest:0};
   const weeks = {};
   c.workouts.forEach(w => {
-    const d=new Date(w.date+'T12:00:00');
-    const ws=new Date(d);ws.setDate(d.getDate()-d.getDay());
-    const k=formatDate(ws);
+    const k = mondayWeekKey(new Date(w.date+'T12:00:00'));
     weeks[k]=(weeks[k]||0)+1;
   });
   const sorted=Object.keys(weeks).sort();
@@ -7450,8 +7457,7 @@ function getStreak() {
     longest=Math.max(longest,streak);
   }
   // Check if current week is active
-  const now=new Date();const ws2=new Date(now);ws2.setDate(now.getDate()-now.getDay());
-  const curWeek=formatDate(ws2);
+  const curWeek = mondayWeekKey(new Date());
   if(weeks[curWeek]) {
     current=1;
     for(let i=sorted.indexOf(curWeek)-1;i>=0;i--) {
@@ -8364,10 +8370,11 @@ function renderReports() {
   html += '</div></div>';
   html += '</div>';
 
-  // Day-of-week performance with explanations
+  // Day-of-week performance with explanations (Monday-first order)
   html += '<div class="card"><h3>Performance by Day of Week ('+rangeLabel+')</h3>';
   html += '<p style="font-size:.78rem;color:var(--text2);margin-bottom:12px;">Grade is based on: progressive overload (+0.4/exercise), rep increases (+0.2), set consistency (+0.2), exercise count (+0.3-0.5), cardio (+0.3). Penalties: steep rep drop-off (-0.5/exercise). Base score: 6.0.</p>';
-  for(let d=0;d<7;d++) {
+  const DOW_MON_FIRST = [1,2,3,4,5,6,0]; // Mon, Tue, Wed, Thu, Fri, Sat, Sun
+  for(const d of DOW_MON_FIRST) {
     const dayWorkouts = filtered.filter(w=>new Date(w.date+'T12:00:00').getDay()===d);
     if(!dayWorkouts.length) continue;
     const recentDayWorkouts = dayWorkouts.slice(-8);
@@ -8938,7 +8945,7 @@ function renderTrainingMap() {
   html += '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">';
   html += '<div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:3px;">Time Range</label>';
   html += '<select id="tmap-range" onchange="updateTrainingMap()" style="min-width:130px;">';
-  html += '<option value="1">Today</option><option value="7" selected>This Week</option><option value="14">Last 2 Weeks</option><option value="30">Last 30 Days</option><option value="90">Last 90 Days</option><option value="0">All Time</option>';
+  html += '<option value="1">Today</option><option value="7" selected>This Week (Mon-Sun)</option><option value="14">Last 2 Weeks (Mon-Sun)</option><option value="30">Last 30 Days</option><option value="90">Last 90 Days</option><option value="0">All Time</option>';
   html += '</select></div>';
   html += '<div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:3px;">Filter Muscle</label>';
   html += '<select id="tmap-muscle" onchange="updateTrainingMap()" style="min-width:130px;">';
@@ -9070,12 +9077,37 @@ function _doUpdateTrainingMap() {
   }
 
   // Get filtered workouts
+  // "This Week" (7) and "Last 2 Weeks" (14) are Monday-aligned calendar weeks.
+  // 30/90 stay rolling.
   let filtered;
-  if(days===1) { filtered = c.workouts.filter(w=>w.date===todayStr()); }
-  else if(days===0) { filtered = c.workouts; }
-  else { filtered = getRecentWorkouts(days); }
+  let gridStart = null; // for the day grid below
+  let gridDays = days;
+  if(days===1) {
+    filtered = c.workouts.filter(w=>w.date===todayStr());
+  } else if(days===0) {
+    filtered = c.workouts;
+  } else if(days===7) {
+    const monStart = getMondayWeekStart(new Date());
+    const sunEnd = new Date(monStart); sunEnd.setDate(sunEnd.getDate()+6);
+    const monStr = formatDate(monStart);
+    const sunStr = formatDate(sunEnd);
+    filtered = c.workouts.filter(w => w.date >= monStr && w.date <= sunStr);
+    gridStart = monStart;
+    gridDays = 7;
+  } else if(days===14) {
+    const monStart = getMondayWeekStart(new Date());
+    const prevMon = new Date(monStart); prevMon.setDate(prevMon.getDate()-7);
+    const sunEnd = new Date(monStart); sunEnd.setDate(sunEnd.getDate()+6);
+    const prevMonStr = formatDate(prevMon);
+    const sunStr = formatDate(sunEnd);
+    filtered = c.workouts.filter(w => w.date >= prevMonStr && w.date <= sunStr);
+    gridStart = prevMon;
+    gridDays = 14;
+  } else {
+    filtered = getRecentWorkouts(days);
+  }
 
-  const rangeLabel = days===1?'Today':days===7?'This Week':days===0?'All Time':'Last '+days+' Days';
+  const rangeLabel = days===1?'Today':days===7?'This Week (Mon-Sun)':days===14?'Last 2 Weeks (Mon-Sun)':days===0?'All Time':'Last '+days+' Days';
   const weekDiv = days===1?1:days===0?Math.max(1,daysBetween(c.workouts[0]?.date||todayStr(),todayStr())/7):Math.max(1,days/7);
 
   let html = '';
@@ -9087,10 +9119,13 @@ function _doUpdateTrainingMap() {
 
   // === Day-by-day grid (for week or 2-week ranges) ===
   if(days>=7 && days<=14) {
-    const startDate = new Date(); startDate.setDate(startDate.getDate()-(days-1));
+    // Use the Monday-aligned grid start computed above for days===7/14;
+    // fall back to rolling for any other range that may slip through.
+    const startDate = gridStart ? new Date(gridStart) : (() => { const s = new Date(); s.setDate(s.getDate()-(days-1)); return s; })();
+    const showDays = gridDays;
     html += '<div class="card"><h3>'+rangeLabel+' - Day Grid</h3>';
     html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:8px;">';
-    for(let i=0;i<days;i++) {
+    for(let i=0;i<showDays;i++) {
       const d = new Date(startDate); d.setDate(startDate.getDate()+i);
       const ds = formatDate(d);
       const dayW = filtered.filter(w=>w.date===ds);
