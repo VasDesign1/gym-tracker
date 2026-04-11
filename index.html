@@ -551,11 +551,18 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 /* Info tooltip used to explain metrics (ACWR, Spinal Loading, Push:Pull, etc.) */
 .info-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);font-size:.68rem;font-weight:700;cursor:help;margin-left:6px;position:relative;vertical-align:middle;font-style:normal;}
 .info-tip:hover{background:var(--highlight);color:#fff;border-color:var(--highlight);}
-.info-tip > .info-body{display:none;position:absolute;bottom:calc(100% + 8px);right:0;width:260px;max-width:80vw;background:var(--card);border:1px solid var(--highlight);border-radius:8px;padding:10px 12px;font-size:.72rem;font-weight:400;color:var(--text);text-align:left;line-height:1.45;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.6);white-space:normal;}
-.info-tip:hover > .info-body, .info-tip:focus > .info-body, .info-tip:active > .info-body{display:block;}
-.info-tip > .info-body strong{color:var(--highlight2);}
-.info-tip > .info-body .tip-section{margin-top:6px;}
-.info-tip > .info-body .tip-section:first-child{margin-top:0;}
+/* Generic hover wrapper used by elements like volume bar sections to show a tooltip on hover. */
+.hover-tip{position:relative;cursor:help;}
+/* Shared tooltip body: fixed-positioned, centered in viewport so it's always fully readable on any screen size. */
+.info-tip > .info-body,
+.hover-tip > .info-body{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(380px,92vw);max-height:80vh;overflow-y:auto;background:var(--card);border:2px solid var(--highlight);border-radius:10px;padding:14px 16px;font-size:.78rem;font-weight:400;color:var(--text);text-align:left;line-height:1.5;z-index:500;box-shadow:0 20px 60px rgba(0,0,0,.85);white-space:normal;pointer-events:none;}
+.info-tip:hover > .info-body,.info-tip:focus > .info-body,.info-tip:focus-within > .info-body,.info-tip:active > .info-body,
+.hover-tip:hover > .info-body,.hover-tip:focus > .info-body,.hover-tip:focus-within > .info-body,.hover-tip:active > .info-body{display:block;}
+.info-tip > .info-body strong,.hover-tip > .info-body strong{color:var(--highlight2);}
+.info-tip > .info-body .tip-section,.hover-tip > .info-body .tip-section{margin-top:6px;}
+.info-tip > .info-body .tip-section:first-child,.hover-tip > .info-body .tip-section:first-child{margin-top:0;}
+.hover-tip > .info-body .ex-row{display:flex;justify-content:space-between;gap:10px;padding:2px 0;font-size:.74rem;}
+.hover-tip > .info-body .ex-row .ex-sets{color:var(--highlight2);font-weight:700;white-space:nowrap;}
 .coach-grade-popup{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--card);border:1px solid var(--highlight);border-radius:10px;padding:16px 18px;width:92vw;max-width:420px;max-height:80vh;overflow-y:auto;z-index:300;font-size:.78rem;line-height:1.5;color:var(--text);box-shadow:0 12px 40px rgba(0,0,0,.7);}
 .coach-grade-popup.show{display:block;}
 .coach-grade-popup .popup-close{position:sticky;top:0;float:right;background:var(--accent);border:none;color:var(--text);cursor:pointer;font-size:1rem;font-weight:700;padding:2px 8px;border-radius:6px;z-index:1;}
@@ -6959,6 +6966,9 @@ function buildCache() {
   const pelotonHistory = [];
   const allDates = [];
   const weeklyVolume = {};
+  // Per-week, per-bodypart exercise breakdown so we can show "which exercises fed this number"
+  // in the Volume Dashboard hover tooltips. Shape: {wk: {bp: {direct:{ex:sets}, indirect:{ex:setsWeighted}}}}
+  const weeklyVolumeEx = {};
   const sessionTSS = {};
 
   workouts.sort((a,b)=>a.date.localeCompare(b.date));
@@ -7001,28 +7011,40 @@ function buildCache() {
     const d = new Date(w.date+'T12:00:00');
     const wk = mondayWeekKey(d);
     if(!weeklyVolume[wk]) weeklyVolume[wk]={};
+    if(!weeklyVolumeEx[wk]) weeklyVolumeEx[wk]={};
+    const ensureExBp = bpKey => {
+      if(!weeklyVolumeEx[wk][bpKey]) weeklyVolumeEx[wk][bpKey] = {direct:{}, indirect:{}};
+      return weeklyVolumeEx[wk][bpKey];
+    };
     (w.exercises||[]).forEach(ex => {
       const name = resolveExerciseName(ex.name);
       const bp = ex.bodyPart || getBodyPartForExercise(name) || 'other';
       const ws = getWorkingSetsFromExercise(ex);
       if(!weeklyVolume[wk][bp]) weeklyVolume[wk][bp]=0;
       weeklyVolume[wk][bp] += ws.length;
+      const dirBucket = ensureExBp(bp).direct;
+      dirBucket[name] = (dirBucket[name]||0) + ws.length;
       // Indirect contributions to other body parts (e.g., chest press -> triceps).
       const indirect = getIndirectBodyParts(name, bp);
       Object.entries(indirect).forEach(([bpI, mult]) => {
         const key = bpI + '_indirect';
         if(!weeklyVolume[wk][key]) weeklyVolume[wk][key] = 0;
         weeklyVolume[wk][key] += ws.length * mult;
+        const indBucket = ensureExBp(bpI).indirect;
+        indBucket[name] = (indBucket[name]||0) + ws.length * mult;
       });
     });
     if(w.peloton && w.peloton.watts && !w.peloton.recovery) {
       if(!weeklyVolume[wk]['legs_hiit']) weeklyVolume[wk]['legs_hiit']=0;
       const fatigueSets = Math.round((w.peloton.minutes||30)/5);
       weeklyVolume[wk]['legs_hiit'] += fatigueSets;
+      const pelLabel = 'Peloton '+(w.peloton.watts||0)+'W × '+(w.peloton.minutes||30)+'min';
+      const legsBucket = ensureExBp('legs').direct;
+      legsBucket[pelLabel] = (legsBucket[pelLabel]||0) + fatigueSets;
     }
   });
 
-  _coachCache = {exerciseHistory, bodyPartSessions, pelotonHistory, allDates, weeklyVolume, workouts};
+  _coachCache = {exerciseHistory, bodyPartSessions, pelotonHistory, allDates, weeklyVolume, weeklyVolumeEx, workouts};
   _cacheKey = key;
   return _coachCache;
 }
@@ -7031,6 +7053,12 @@ function getCurrentWeekVolume() {
   const c = buildCache();
   const wk = mondayWeekKey(new Date());
   return c.weeklyVolume[wk]||{};
+}
+
+function getCurrentWeekVolumeEx() {
+  const c = buildCache();
+  const wk = mondayWeekKey(new Date());
+  return c.weeklyVolumeEx[wk]||{};
 }
 
 function getRecentWorkouts(days) {
@@ -8072,9 +8100,28 @@ function renderOverload() {
 
 function renderVolumeDashboard() {
   const vol = getCurrentWeekVolume();
+  const volEx = getCurrentWeekVolumeEx();
   const pp = calcPushPullRatio();
   let html = '<div class="coach-section"><h3>This Week\'s Volume (Sets per Muscle Group)</h3>';
-  html += '<div style="font-size:.72rem;color:var(--text2);margin-bottom:10px;">Direct sets come from exercises that primarily target the muscle. <span style="color:var(--highlight);">Indirect sets</span> are stimulus-equivalents from exercises that hit the muscle as a secondary (e.g. chest/shoulder presses add indirect work to triceps; rows/pulldowns add indirect work to biceps). Indirect sets count at ~50% per convention.</div>';
+  html += '<div style="font-size:.72rem;color:var(--text2);margin-bottom:10px;">Direct sets come from exercises that primarily target the muscle. <span style="color:var(--highlight);">Indirect sets</span> are stimulus-equivalents from exercises that hit the muscle as a secondary (e.g. chest/shoulder presses add indirect work to triceps; rows/pulldowns add indirect work to biceps). Indirect sets count at ~50% per convention. <strong style="color:var(--highlight2);">Hover (or tap) any bar section</strong> to see the exercises feeding it.</div>';
+
+  // Build a tooltip body listing exercises for a muscle's direct/indirect bucket.
+  const buildExTooltip = (title, exMap, kind) => {
+    const entries = Object.entries(exMap||{}).sort((a,b)=>b[1]-a[1]);
+    let body = '<strong>'+title+'</strong>';
+    if(kind==='indirect') body += '<div class="tip-section" style="color:var(--text2);font-size:.7rem;">Sets shown are weighted at 50% (the standard convention for secondary-muscle stimulus).</div>';
+    if(!entries.length) {
+      body += '<div class="tip-section" style="color:var(--text2);">No '+kind+' exercises logged this week.</div>';
+    } else {
+      body += '<div class="tip-section">';
+      entries.forEach(([exName, sets]) => {
+        const displaySets = kind==='indirect' ? (Math.round(sets*10)/10) : sets;
+        body += '<div class="ex-row"><span>'+escapeHtml(exName)+'</span><span class="ex-sets">'+displaySets+' sets</span></div>';
+      });
+      body += '</div>';
+    }
+    return body;
+  };
 
   Object.entries(VOLUME_TARGETS).forEach(([bp,targets]) => {
     const direct = (vol[bp]||0) + (bp==='legs'?(vol['legs_hiit']||0):0);
@@ -8088,12 +8135,24 @@ function renderVolumeDashboard() {
     else if(direct<targets.optimal) color='yellow';
     const label = bp.charAt(0).toUpperCase()+bp.slice(1);
     const indirectLabel = indirect>0 ? ' <span style="color:var(--highlight);">+ '+indirect+' indirect</span>' : '';
+
+    const bpEx = volEx[bp] || {direct:{}, indirect:{}};
+    const directTip = buildExTooltip('Direct '+label+' exercises this week', bpEx.direct, 'direct');
+    const indirectTip = buildExTooltip('Indirect '+label+' stimulus this week', bpEx.indirect, 'indirect');
+
     html += '<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap;"><span style="font-weight:600;font-size:.85rem;">'+label+'</span><span style="font-size:.8rem;color:var(--text2);">'+direct+' direct'+indirectLabel+' <span style="opacity:.6;">(target: '+targets.min+'-'+targets.max+')</span></span></div>';
-    html += '<div class="coach-bar-container" style="position:relative;">';
-    html += '<div class="coach-bar-fill '+color+'" style="width:'+directPct+'%">'+direct+'</div>';
+    html += '<div class="coach-bar-container" style="position:relative;overflow:visible;">';
+    // Direct bar is now a hover target; tooltip lists the exercises contributing to it.
+    html += '<div class="hover-tip coach-bar-fill '+color+'" tabindex="0" style="width:'+directPct+'%;">'+direct;
+    html += '<span class="info-body">'+directTip+'</span>';
+    html += '</div>';
     if(indirect>0) {
       const indirectWidth = Math.min(100-directPct, (indirect/targets.max)*100);
-      html += '<div style="position:absolute;top:0;left:'+directPct+'%;height:100%;width:'+indirectWidth+'%;background:repeating-linear-gradient(45deg,var(--highlight),var(--highlight) 4px,transparent 4px,transparent 8px);opacity:.55;"></div>';
+      // Indirect stripe gets its own hover target, nested so opacity only hits the visual layer.
+      html += '<span class="hover-tip" tabindex="0" style="position:absolute;top:0;left:'+directPct+'%;height:100%;width:'+indirectWidth+'%;">';
+      html += '<span style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,var(--highlight),var(--highlight) 4px,transparent 4px,transparent 8px);opacity:.55;border-radius:0 6px 6px 0;"></span>';
+      html += '<span class="info-body">'+indirectTip+'</span>';
+      html += '</span>';
     }
     html += '</div>';
     if(indirect>0) html += '<div style="font-size:.7rem;color:var(--text2);margin-top:2px;">Total stimulus ≈ '+(Math.round(totalStim*10)/10)+' sets (direct + indirect)</div>';
@@ -9093,24 +9152,41 @@ function renderTrainingMap() {
       'Core':['Rectus Abs','Rectus Abs (Upper)','Lower Abs','Transverse Abs','Obliques','Serratus'],
       'Other':['Forearms','Core','Unknown']
     };
+    // Short labels so all 10 region tiles fit on one line even on a phone.
+    const REGION_SHORT = {
+      'Chest':'Chest','Shoulders':'Shldrs','Back':'Back','Biceps':'Biceps','Triceps':'Triceps',
+      'Quads':'Quads','Glutes & Hips':'Glutes','Hamstrings':'Hams','Calves':'Calves','Core':'Core'
+    };
 
-    // Quick region summary strip — tells you at one glance which regions are under/over/optimal.
-    // For each region, take the average weekly sets across muscle heads that have any data.
-    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:6px;margin-bottom:14px;">';
+    // === 1. Not-trained callout first so the user sees gaps immediately. ===
+    const allPossible = Object.values(regions).flat();
+    const skipped = allPossible.filter(m=>!muscles[m]&&!['Unknown','Core','Forearms','Calves','Serratus','Levator Scapulae','External Rotators','Teres Major','Hip Flexors'].includes(m));
+    if(skipped.length) {
+      h += '<div style="margin-bottom:12px;padding:10px 12px;background:rgba(127,140,141,.12);border:1px dashed #7f8c8d;border-radius:6px;">';
+      h += '<div style="font-weight:700;font-size:.82rem;color:#bdc3c7;margin-bottom:4px;">⚠ Not Trained ('+skipped.length+' muscles)</div>';
+      h += '<div style="font-size:.74rem;color:var(--text2);">'+skipped.join(', ')+'</div>';
+      h += '<div style="font-size:.65rem;color:var(--text2);font-style:italic;margin-top:4px;">Untrained muscles create imbalances. Opposing pairs (biceps/triceps, quads/hams, front/rear delts) should have roughly equal weekly volume.</div>';
+      h += '</div>';
+    }
+
+    // === 2. Region summary strip. Forced to a single row on every screen size. ===
+    // 10 equal columns with minmax(0,1fr) lets each tile shrink below its content width on narrow screens.
+    h += '<div style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:3px;margin-bottom:14px;">';
     Object.entries(regions).forEach(([region, muscleNames]) => {
       if(region==='Other') return;
       const present = muscleNames.filter(m=>muscles[m]);
       const totalWeekly = present.reduce((sum,m)=>sum+(muscles[m].sets/weekDiv),0);
       const avgWeekly = present.length ? totalWeekly/present.length : 0;
       const st = present.length ? statusFor(avgWeekly) : STATUS.skipped;
-      h += '<div style="padding:8px 6px;background:'+st.bg+';border:1px solid '+st.color+';border-radius:6px;text-align:center;">';
-      h += '<div style="font-size:.7rem;color:var(--text);font-weight:700;">'+region+'</div>';
-      h += '<div style="font-size:1.1rem;font-weight:800;color:'+st.color+';line-height:1.1;margin-top:2px;">'+avgWeekly.toFixed(1)+'</div>';
-      h += '<div style="font-size:.6rem;color:'+st.color+';font-weight:700;letter-spacing:.3px;">'+st.label+'</div>';
-      h += '<div style="font-size:.55rem;color:var(--text2);">sets/wk avg</div>';
+      const shortLabel = REGION_SHORT[region] || region;
+      h += '<div title="'+region+'" style="padding:5px 2px;background:'+st.bg+';border:1px solid '+st.color+';border-radius:5px;text-align:center;min-width:0;overflow:hidden;">';
+      h += '<div style="font-size:.62rem;color:var(--text);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+shortLabel+'</div>';
+      h += '<div style="font-size:.95rem;font-weight:800;color:'+st.color+';line-height:1.1;margin-top:1px;">'+avgWeekly.toFixed(1)+'</div>';
+      h += '<div style="font-size:.52rem;color:'+st.color+';font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+st.label+'</div>';
       h += '</div>';
     });
     h += '</div>';
+    h += '<div style="font-size:.62rem;color:var(--text2);margin:-10px 0 12px 0;text-align:center;">Average sets/week per muscle head. Hover a tile for the full region name.</div>';
 
     Object.entries(regions).forEach(([region, muscleNames]) => {
       const regionMuscles = muscleNames.filter(m=>muscles[m]).map(m=>({name:m,...muscles[m],exercises:Array.from(muscles[m].exercises)}));
@@ -9139,16 +9215,6 @@ function renderTrainingMap() {
       h += '</div>';
     });
 
-    // Skipped muscles — the outlier callout stays so you notice gaps.
-    const allPossible = Object.values(regions).flat();
-    const skipped = allPossible.filter(m=>!muscles[m]&&!['Unknown','Core','Forearms','Calves','Serratus','Levator Scapulae','External Rotators','Teres Major','Hip Flexors'].includes(m));
-    if(skipped.length) {
-      h += '<div style="margin-top:8px;padding:8px 10px;background:rgba(127,140,141,.12);border:1px dashed #7f8c8d;border-radius:6px;">';
-      h += '<div style="font-weight:700;font-size:.78rem;color:#bdc3c7;margin-bottom:4px;">Not Trained ('+skipped.length+' muscles):</div>';
-      h += '<div style="font-size:.74rem;color:var(--text2);">'+skipped.join(', ')+'</div>';
-      h += '<div style="font-size:.65rem;color:var(--text2);font-style:italic;margin-top:4px;">Untrained muscles create imbalances. Opposing pairs (biceps/triceps, quads/hams, front/rear delts) should have roughly equal weekly volume.</div>';
-      h += '</div>';
-    }
     return h;
   }
 
