@@ -6864,25 +6864,33 @@ function getIndirectBodyParts(name, primaryBp) {
   const out = {};
   const add = (bp, m) => { if(bp && bp !== primaryBp) out[bp] = (out[bp]||0) + m; };
 
+  // Use BOTH the exercise name AND the user's body-part classification to decide the movement
+  // pattern — e.g. "Dumbbell Press" is a shoulder press when logged as shoulder, a chest press otherwise.
+  const hasPress = /press|bench|push[- ]?up/.test(n);
   const isFly = /\bfly\b|pec dec/.test(n);
   const isRow = /\brow\b|pulldown|pull[- ]?down|pull[- ]?up|pullover/.test(n);
   const isRearDelt = /rear delt|face pull|reverse pec|bent over fly|bitch slap/.test(n);
   const isDeadlift = /deadlift|\brdl\b|romanian/.test(n);
   const isSquat = /\bsquat\b|leg press/.test(n);
-  const isShoulderPress = /shoulder press|overhead press|military press|machine shoulder/.test(n);
-  const isChestPress = /(bench press|dumbbell press|chest press|push[- ]?up|smith machine .*barbell press)/.test(n) && !isShoulderPress;
   const isLateralRaise = /lateral raise|front raise/.test(n);
-  const isBicepCurl = /curl/.test(n) && !/leg curl|hamstring curl/.test(n);
-  const isTricepIso = /triceps|tricep|push[- ]?down|skull crush|rope pull down|bar pull down/.test(n);
 
-  if(isChestPress) { add('triceps', 0.5); add('shoulder', 0.25); }
-  if(isShoulderPress) { add('triceps', 0.4); add('chest', 0.15); }
+  const isShoulderPress = hasPress && !isFly && (
+    primaryBp === 'shoulder' ||
+    /shoulder press|overhead press|military press|machine shoulder|arnold press|seated press/.test(n)
+  );
+  const isChestPress = hasPress && !isFly && !isShoulderPress && (
+    primaryBp === 'chest' ||
+    /(bench press|chest press|push[- ]?up|smith machine .*barbell press)/.test(n)
+  );
+
+  if(isChestPress)     { add('triceps', 0.5); add('shoulder', 0.25); }
+  if(isShoulderPress)  { add('triceps', 0.4); add('chest', 0.15); }
   if(isRow && !isRearDelt) { add('biceps', 0.5); add('shoulder', 0.2); }
-  if(isRearDelt) { add('back', 0.3); }
-  if(isFly) { add('shoulder', 0.15); }
-  if(isDeadlift) { add('back', 0.6); add('legs', 0.3); add('core', 0.2); }
-  if(isSquat) { add('core', 0.25); add('back', 0.15); }
-  if(isLateralRaise) { add('back', 0.1); }
+  if(isRearDelt)       { add('back', 0.3); }
+  if(isFly)            { add('shoulder', 0.15); }
+  if(isDeadlift)       { add('back', 0.6); add('legs', 0.3); add('core', 0.2); }
+  if(isSquat)          { add('core', 0.25); add('back', 0.15); }
+  if(isLateralRaise)   { add('back', 0.1); }
   return out;
 }
 
