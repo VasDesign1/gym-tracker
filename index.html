@@ -8111,7 +8111,15 @@ function renderVolumeDashboard() {
   const volEx = getCurrentWeekVolumeEx();
   const pp = calcPushPullRatio();
   let html = '<div class="coach-section"><h3>This Week\'s Volume (Sets per Muscle Group)</h3>';
-  html += '<div style="font-size:.72rem;color:var(--text2);margin-bottom:10px;">Direct sets come from exercises that primarily target the muscle. <span style="color:var(--highlight);">Indirect sets</span> are stimulus-equivalents from exercises that hit the muscle as a secondary (e.g. chest/shoulder presses add indirect work to triceps; rows/pulldowns add indirect work to biceps). Indirect sets count at ~50% per convention. <strong style="color:var(--highlight2);">Hover (or tap) any bar section</strong> to see the exercises feeding it.</div>';
+  html += '<div style="font-size:.72rem;color:var(--text2);margin-bottom:8px;">Direct sets come from exercises that primarily target the muscle. <span style="color:var(--highlight);">Indirect sets</span> are stimulus-equivalents from exercises that hit the muscle as a secondary (e.g. chest/shoulder presses add indirect work to triceps; rows/pulldowns add indirect work to biceps). Indirect sets count at ~50% per convention. <strong style="color:var(--highlight2);">Hover (or tap) any bar section</strong> to see the exercises feeding it.</div>';
+  // Color legend so the meaning of each bar color is obvious at a glance.
+  html += '<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:.68rem;margin-bottom:12px;padding:8px 10px;background:var(--card2);border-radius:6px;align-items:center;">';
+  html += '<span style="color:var(--text2);font-weight:600;margin-right:2px;">Bar colors:</span>';
+  html += '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:10px;border-radius:2px;background:var(--green);"></span><span style="color:var(--green);font-weight:700;">GREEN</span> <span style="color:var(--text2);">inside target (min–max)</span></span>';
+  html += '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:10px;border-radius:2px;background:var(--orange);"></span><span style="color:var(--orange);font-weight:700;">AMBER</span> <span style="color:var(--text2);">below optimal</span></span>';
+  html += '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:10px;border-radius:2px;background:#e74c3c;"></span><span style="color:#e74c3c;font-weight:700;">RED</span> <span style="color:var(--text2);">below min or above max</span></span>';
+  html += '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:10px;border-radius:2px;background:repeating-linear-gradient(45deg,var(--highlight),var(--highlight) 3px,transparent 3px,transparent 6px);"></span><span style="color:var(--highlight);font-weight:700;">STRIPED</span> <span style="color:var(--text2);">indirect stimulus</span></span>';
+  html += '</div>';
 
   // Build a tooltip body listing exercises for a muscle's direct/indirect bucket.
   const buildExTooltip = (title, exMap, kind) => {
@@ -8169,8 +8177,20 @@ function renderVolumeDashboard() {
   });
 
   // Ratios
+  const pushPullTip = infoTip(
+    '<div class="tip-section"><strong>What it is:</strong> Weekly push sets (chest + shoulders + triceps) divided by pull sets (back + biceps).</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Pressing pulls the shoulders forward; rowing pulls them back. When push dominates, the rear delts and mid-back undertrain, posture collapses forward, and the rotator cuff takes on work it was not built for — leading to impingement, anterior shoulder pain, and upper-back tightness.</div>'+
+    '<div class="tip-section"><strong>Target:</strong> 0.8–1.2 (ideally slightly pull-dominant, i.e. ratio &lt; 1). &gt;1.3 push-dominant, add rows / face pulls. &gt;1.5 red flag.</div>'+
+    '<div class="tip-section"><strong>How to fix it:</strong> For every pushing set, aim for at least one pulling set. Face pulls, rear delt flies, and rows are the fastest way to rebalance.</div>'
+  );
+  const quadHamTip = infoTip(
+    '<div class="tip-section"><strong>What it is:</strong> Quad-dominant sets (squats, leg press, leg extension) divided by hamstring-dominant sets (leg curls, RDLs).</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Quads and hamstrings are antagonists stabilising the knee. Hamstrings are almost always under-trained because squats and presses don\'t load them in a lengthened position. Weak/short hams = higher ACL and hamstring-strain risk, especially for anyone who sprints or cycles.</div>'+
+    '<div class="tip-section"><strong>Target:</strong> 1.5–2.0 quad:ham is typical for recreational lifters. Athletes who sprint/jump should push closer to 1:1. Anything &gt; 3:1 is a ham-strain waiting to happen.</div>'+
+    '<div class="tip-section"><strong>How to fix it:</strong> Add lying or seated leg curls, Romanian deadlifts, or good-mornings. 2–4 dedicated ham sets per week is usually enough.</div>'
+  );
   html += '<div class="coach-grid" style="margin-top:16px;">';
-  html += '<div class="card"><h3>Push : Pull Ratio</h3><div class="coach-metric"><span class="cm-label">Push sets</span><span class="cm-value">'+pp.push+'</span></div><div class="coach-metric"><span class="cm-label">Pull sets</span><span class="cm-value">'+pp.pull+'</span></div><div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value" style="color:'+(pp.push>0&&pp.pull>0&&pp.push/pp.pull>1.3?'var(--orange)':'var(--green)')+'">'+pp.ratio+'</span></div><div style="font-size:.75rem;color:var(--text2);margin-top:8px;">Ideal: 0.8-1.2 (slightly pull-dominant)</div></div>';
+  html += '<div class="card"><h3>Push : Pull Ratio'+pushPullTip+'</h3><div class="coach-metric"><span class="cm-label">Push sets</span><span class="cm-value">'+pp.push+'</span></div><div class="coach-metric"><span class="cm-label">Pull sets</span><span class="cm-value">'+pp.pull+'</span></div><div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value" style="color:'+(pp.push>0&&pp.pull>0&&pp.push/pp.pull>1.3?'var(--orange)':'var(--green)')+'">'+pp.ratio+'</span></div><div style="font-size:.75rem;color:var(--text2);margin-top:8px;">Ideal: 0.8-1.2 (slightly pull-dominant)</div></div>';
 
   // Quad:Ham estimate
   const quadEx = ['Leg Extension','Squat','Smith Machine Squat','Leg Press'];
@@ -8184,7 +8204,7 @@ function renderVolumeDashboard() {
       if(hamEx.some(q=>n.toLowerCase().includes(q.toLowerCase()))) hamSets+=ws.length;
     });
   });
-  html += '<div class="card"><h3>Quad : Hamstring</h3><div class="coach-metric"><span class="cm-label">Quad sets</span><span class="cm-value">'+quadSets+'</span></div><div class="coach-metric"><span class="cm-label">Hamstring sets</span><span class="cm-value">'+hamSets+'</span></div><div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value">'+(hamSets>0?(quadSets/hamSets).toFixed(1):'N/A')+'</span></div><div style="font-size:.75rem;color:var(--text2);margin-top:8px;">Ideal: 1.5-2.0 quad-to-ham</div></div>';
+  html += '<div class="card"><h3>Quad : Hamstring'+quadHamTip+'</h3><div class="coach-metric"><span class="cm-label">Quad sets</span><span class="cm-value">'+quadSets+'</span></div><div class="coach-metric"><span class="cm-label">Hamstring sets</span><span class="cm-value">'+hamSets+'</span></div><div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value">'+(hamSets>0?(quadSets/hamSets).toFixed(1):'N/A')+'</span></div><div style="font-size:.75rem;color:var(--text2);margin-top:8px;">Ideal: 1.5-2.0 quad-to-ham</div></div>';
   html += '</div></div>';
   return html;
 }
