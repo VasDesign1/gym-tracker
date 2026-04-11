@@ -548,6 +548,14 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 .coach-trend.flat{color:var(--orange);}
 .coach-tooltip-wrap{position:relative;display:inline-flex;cursor:help;}
 .coach-tooltip-wrap .coach-tip{display:none;}
+/* Info tooltip used to explain metrics (ACWR, Spinal Loading, Push:Pull, etc.) */
+.info-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--input-bg);color:var(--text2);border:1px solid var(--border);font-size:.68rem;font-weight:700;cursor:help;margin-left:6px;position:relative;vertical-align:middle;font-style:normal;}
+.info-tip:hover{background:var(--highlight);color:#fff;border-color:var(--highlight);}
+.info-tip > .info-body{display:none;position:absolute;bottom:calc(100% + 8px);right:0;width:260px;max-width:80vw;background:var(--card);border:1px solid var(--highlight);border-radius:8px;padding:10px 12px;font-size:.72rem;font-weight:400;color:var(--text);text-align:left;line-height:1.45;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.6);white-space:normal;}
+.info-tip:hover > .info-body, .info-tip:focus > .info-body, .info-tip:active > .info-body{display:block;}
+.info-tip > .info-body strong{color:var(--highlight2);}
+.info-tip > .info-body .tip-section{margin-top:6px;}
+.info-tip > .info-body .tip-section:first-child{margin-top:0;}
 .coach-grade-popup{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--card);border:1px solid var(--highlight);border-radius:10px;padding:16px 18px;width:92vw;max-width:420px;max-height:80vh;overflow-y:auto;z-index:300;font-size:.78rem;line-height:1.5;color:var(--text);box-shadow:0 12px 40px rgba(0,0,0,.7);}
 .coach-grade-popup.show{display:block;}
 .coach-grade-popup .popup-close{position:sticky;top:0;float:right;background:var(--accent);border:none;color:var(--text);cursor:pointer;font-size:1rem;font-weight:700;padding:2px 8px;border-radius:6px;z-index:1;}
@@ -2605,22 +2613,57 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ===================== HELPERS =====================
+// All dates/times in this app are anchored to Melbourne, Australia.
+// The user lives/trains there; timezone must not depend on the browser's local clock.
+const MELBOURNE_TZ = 'Australia/Melbourne';
+function melbourneParts(d) {
+  d = d || new Date();
+  const parts = {};
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: MELBOURNE_TZ,
+    year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: false,
+    weekday:'short'
+  }).formatToParts(d).forEach(p => { if (p.type !== 'literal') parts[p.type] = p.value; });
+  if (parts.hour === '24') parts.hour = '00';
+  return parts;
+}
+function melbourneDateStr(d) {
+  const p = melbourneParts(d);
+  return p.year + '-' + p.month + '-' + p.day;
+}
+// Convert a Melbourne wall-clock (dateStr + h/m/s) to the corresponding UTC ms.
+// Handles DST automatically by asking Intl what Melbourne sees at a guess, then correcting.
+function melbourneWallToUTCms(dateStr, hour, minute, second) {
+  hour = hour||0; minute = minute||0; second = second||0;
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const guess = Date.UTC(y, m-1, d, hour, minute, second);
+  const p = melbourneParts(new Date(guess));
+  const shown = Date.UTC(+p.year, +p.month-1, +p.day, +p.hour, +p.minute, +p.second);
+  return guess - (shown - guess); // offset = shown - guess; utc = guess - offset
+}
 function formatDate(d) {
-  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  return melbourneDateStr(d);
 }
 // === Week is Monday -> Sunday ===
 // mondayDow: 0=Mon, 1=Tue, ..., 6=Sun (use this for calendar column offsets)
+// Uses Melbourne weekday so the current "day of week" is always Melbourne-local.
 function mondayDow(date) {
   const d = (date instanceof Date) ? date : new Date(date);
-  const dow = d.getDay(); // native: 0=Sun..6=Sat
-  return (dow === 0) ? 6 : dow - 1;
+  const wk = melbourneParts(d).weekday; // Sun..Sat
+  const map = {Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
+  return map[wk] !== undefined ? map[wk] : 0;
 }
-// Returns the Monday on or before the given date (time zeroed)
+// Returns a Date whose Melbourne wall-clock is the Monday on or before `date` at 00:00.
 function getMondayWeekStart(date) {
-  const d = (date instanceof Date) ? new Date(date) : new Date(date);
-  d.setHours(0,0,0,0);
-  d.setDate(d.getDate() - mondayDow(d));
-  return d;
+  const d = (date instanceof Date) ? date : new Date(date);
+  const p = melbourneParts(d);
+  // Build midnight on that Melbourne day, then step back to Monday.
+  const baseStr = p.year + '-' + p.month + '-' + p.day;
+  const midnightMs = melbourneWallToUTCms(baseStr, 0, 0, 0);
+  const base = new Date(midnightMs);
+  const dow = mondayDow(base);
+  return new Date(midnightMs - dow * 86400000);
 }
 // YYYY-MM-DD key for the Monday of the week containing this date
 function mondayWeekKey(date) { return formatDate(getMondayWeekStart(date)); }
@@ -6792,12 +6835,49 @@ function getProfile() { try { return JSON.parse(localStorage.getItem('gym_coach_
 function saveProfileData(p) { localStorage.setItem('gym_coach_profile', JSON.stringify(p)); }
 function getNutritionLog() { try { const v=JSON.parse(localStorage.getItem('gym_nutrition_log')||'{}'); return (v&&typeof v==='object')?v:{}; } catch(e) { return {}; } }
 function getBodyweightLog() { try { const v=JSON.parse(localStorage.getItem('gym_bodyweight_log')||'{}'); return (v&&typeof v==='object')?v:{}; } catch(e) { return {}; } }
-function todayStr() { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function todayStr() { return melbourneDateStr(new Date()); }
 function daysBetween(a,b) { return Math.round((new Date(b)-new Date(a))/86400000); }
-function hoursSince(dateStr) { return (Date.now()-new Date(dateStr+'T12:00:00').getTime())/3600000; }
+// Hours since noon Melbourne on dateStr — matches how the rest of the app anchors days.
+function hoursSince(dateStr) { return (Date.now() - melbourneWallToUTCms(dateStr, 12, 0, 0)) / 3600000; }
 function clamp(v,lo,hi) { return Math.max(lo,Math.min(hi,v)); }
 function stddev(arr) { if(!arr.length) return 0; const m=arr.reduce((a,b)=>a+b,0)/arr.length; return Math.sqrt(arr.reduce((s,v)=>s+(v-m)*(v-m),0)/arr.length); }
 function avg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+
+// Returns indirect body-part contributions for an exercise, as {bp: multiplier}.
+// E.g., a chest press puts 0.5 stimulus-sets on triceps and 0.25 on shoulder per working set.
+// Numbers follow the standard hypertrophy-fatigue convention (secondary muscles count at ~50%).
+// Render an inline info tooltip ("ⓘ") used next to metric headings.
+// `bodyHtml` is the explanation shown on hover/tap — can contain <strong>, <br>, etc.
+function infoTip(bodyHtml) {
+  return '<span class="info-tip" tabindex="0" aria-label="More info">i<span class="info-body">'+bodyHtml+'</span></span>';
+}
+
+function getIndirectBodyParts(name, primaryBp) {
+  const n = (name||'').toLowerCase();
+  const out = {};
+  const add = (bp, m) => { if(bp && bp !== primaryBp) out[bp] = (out[bp]||0) + m; };
+
+  const isFly = /\bfly\b|pec dec/.test(n);
+  const isRow = /\brow\b|pulldown|pull[- ]?down|pull[- ]?up|pullover/.test(n);
+  const isRearDelt = /rear delt|face pull|reverse pec|bent over fly|bitch slap/.test(n);
+  const isDeadlift = /deadlift|\brdl\b|romanian/.test(n);
+  const isSquat = /\bsquat\b|leg press/.test(n);
+  const isShoulderPress = /shoulder press|overhead press|military press|machine shoulder/.test(n);
+  const isChestPress = /(bench press|dumbbell press|chest press|push[- ]?up|smith machine .*barbell press)/.test(n) && !isShoulderPress;
+  const isLateralRaise = /lateral raise|front raise/.test(n);
+  const isBicepCurl = /curl/.test(n) && !/leg curl|hamstring curl/.test(n);
+  const isTricepIso = /triceps|tricep|push[- ]?down|skull crush|rope pull down|bar pull down/.test(n);
+
+  if(isChestPress) { add('triceps', 0.5); add('shoulder', 0.25); }
+  if(isShoulderPress) { add('triceps', 0.4); add('chest', 0.15); }
+  if(isRow && !isRearDelt) { add('biceps', 0.5); add('shoulder', 0.2); }
+  if(isRearDelt) { add('back', 0.3); }
+  if(isFly) { add('shoulder', 0.15); }
+  if(isDeadlift) { add('back', 0.6); add('legs', 0.3); add('core', 0.2); }
+  if(isSquat) { add('core', 0.25); add('back', 0.15); }
+  if(isLateralRaise) { add('back', 0.1); }
+  return out;
+}
 
 function getWorkingSetsFromExercise(ex) {
   if(!ex||!ex.sets) return [];
@@ -6922,10 +7002,18 @@ function buildCache() {
     const wk = mondayWeekKey(d);
     if(!weeklyVolume[wk]) weeklyVolume[wk]={};
     (w.exercises||[]).forEach(ex => {
-      const bp = ex.bodyPart || getBodyPartForExercise(resolveExerciseName(ex.name)) || 'other';
+      const name = resolveExerciseName(ex.name);
+      const bp = ex.bodyPart || getBodyPartForExercise(name) || 'other';
       const ws = getWorkingSetsFromExercise(ex);
       if(!weeklyVolume[wk][bp]) weeklyVolume[wk][bp]=0;
       weeklyVolume[wk][bp] += ws.length;
+      // Indirect contributions to other body parts (e.g., chest press -> triceps).
+      const indirect = getIndirectBodyParts(name, bp);
+      Object.entries(indirect).forEach(([bpI, mult]) => {
+        const key = bpI + '_indirect';
+        if(!weeklyVolume[wk][key]) weeklyVolume[wk][key] = 0;
+        weeklyVolume[wk][key] += ws.length * mult;
+      });
     });
     if(w.peloton && w.peloton.watts && !w.peloton.recovery) {
       if(!weeklyVolume[wk]['legs_hiit']) weeklyVolume[wk]['legs_hiit']=0;
@@ -7295,9 +7383,24 @@ function getNextSessionSuggestions() {
     Object.entries(exercises).forEach(([name,hist]) => {
       if(!hist.length) return;
       const last = hist[hist.length-1];
+      const isPlanks = name === 'Planks';
       let suggestedKg = last.maxKg, suggestedReps = '8-12', suggestedSets = last.sets||4, note='';
       const allReps = hist.slice(-2).map(h=>h.avgReps);
-      if(allReps.every(r=>r>=11.5)) {
+      if(isPlanks) {
+        // Plank "reps" are hold seconds; progress by extending time, not load.
+        const avgHold = Math.round(last.avgReps);
+        if(allReps.every(r=>r>=60)) {
+          suggestedReps = (avgHold+15);
+          note = 'Extend hold time (holding 60s+ comfortably)';
+        } else if(allReps.every(r=>r<20)) {
+          suggestedReps = Math.max(15, avgHold);
+          note = 'Hold time very short — focus on bracing and breathing';
+        } else {
+          suggestedReps = Math.max(avgHold, 30);
+          note = 'Push for a longer hold each set';
+        }
+        suggestedKg = 0;
+      } else if(allReps.every(r=>r>=11.5)) {
         suggestedKg = last.maxKg + (COMPOUND_EXERCISES.has(name.toLowerCase())?2.5:1.25);
         suggestedReps = '8-10';
         note = 'Increase weight (hit top of rep range)';
@@ -7653,7 +7756,10 @@ function storeGradeForPopup(grade, title) {
 function renderBriefing() {
   const split = detectTrainingSplit();
   const today = new Date();
-  const dow = today.getDay();
+  // Day-of-week in Melbourne, not browser-local, so "today" always matches the training day the user is actually having.
+  const melWeekday = new Intl.DateTimeFormat('en-US',{timeZone:MELBOURNE_TZ,weekday:'short'}).format(today);
+  const dowMap = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+  const dow = dowMap[melWeekday];
   const todayInfo = split[dow];
   const c = buildCache();
   const profile = getProfile();
@@ -7669,7 +7775,7 @@ function renderBriefing() {
   const lastWorkout = c.workouts.length ? c.workouts[c.workouts.length-1] : null;
 
   let html = '<div class="coach-section">';
-  html += '<h3>'+DAYS[dow]+' - '+today.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+'</h3>';
+  html += '<h3>'+DAYS[dow]+' - '+new Intl.DateTimeFormat('en-GB',{timeZone:MELBOURNE_TZ,day:'numeric',month:'long',year:'numeric'}).format(today)+'</h3>';
 
   // Readiness gauge with popup breakdown
   const readColor = readiness>=70?'var(--green)':readiness>=40?'var(--orange)':'#e74c3c';
@@ -7701,9 +7807,17 @@ function renderBriefing() {
     if(suggestions.suggestions.length) {
       html += '<h3 style="margin-top:16px;">Suggested Exercises</h3>';
       suggestions.suggestions.forEach(s => {
+        const isPlanks = s.name === 'Planks';
         html += '<div class="coach-ex-card"><div class="coach-ex-header"><span class="coach-ex-name">'+s.name+'</span><span class="coach-tag blue">'+s.bodyPart+'</span></div>';
-        html += '<div class="coach-metric"><span class="cm-label">Suggested</span><span class="cm-value">'+s.suggestedSets+' x '+s.suggestedReps+' @ '+s.suggestedKg+'kg</span></div>';
-        html += '<div class="coach-metric"><span class="cm-label">Last Session</span><span class="cm-value">'+s.lastKg+'kg x '+s.lastReps+' reps</span></div>';
+        if(isPlanks) {
+          // Plank is sets × seconds, not sets × reps @ kg.
+          const suggestedHold = (typeof s.suggestedReps === 'string' && s.suggestedReps.includes('-')) ? s.lastReps+'s' : s.suggestedReps+'s';
+          html += '<div class="coach-metric"><span class="cm-label">Suggested</span><span class="cm-value">'+s.suggestedSets+' sets × '+suggestedHold+' hold</span></div>';
+          html += '<div class="coach-metric"><span class="cm-label">Last Session</span><span class="cm-value">'+s.suggestedSets+' sets × '+s.lastReps+'s</span></div>';
+        } else {
+          html += '<div class="coach-metric"><span class="cm-label">Suggested</span><span class="cm-value">'+s.suggestedSets+' x '+s.suggestedReps+' @ '+s.suggestedKg+'kg</span></div>';
+          html += '<div class="coach-metric"><span class="cm-label">Last Session</span><span class="cm-value">'+s.lastKg+'kg x '+s.lastReps+' reps</span></div>';
+        }
         if(s.note) {
           html += '<div style="font-size:.8rem;color:var(--orange);margin-top:6px;">'+s.note+'</div>';
           const isCmp = COMPOUND_EXERCISES.has(s.name.toLowerCase());
@@ -7960,15 +8074,29 @@ function renderVolumeDashboard() {
   const vol = getCurrentWeekVolume();
   const pp = calcPushPullRatio();
   let html = '<div class="coach-section"><h3>This Week\'s Volume (Sets per Muscle Group)</h3>';
+  html += '<div style="font-size:.72rem;color:var(--text2);margin-bottom:10px;">Direct sets come from exercises that primarily target the muscle. <span style="color:var(--highlight);">Indirect sets</span> are stimulus-equivalents from exercises that hit the muscle as a secondary (e.g. chest/shoulder presses add indirect work to triceps; rows/pulldowns add indirect work to biceps). Indirect sets count at ~50% per convention.</div>';
 
   Object.entries(VOLUME_TARGETS).forEach(([bp,targets]) => {
-    const sets = (vol[bp]||0) + (bp==='legs'?(vol['legs_hiit']||0):0);
-    const pct = Math.min(100, (sets/targets.max)*100);
+    const direct = (vol[bp]||0) + (bp==='legs'?(vol['legs_hiit']||0):0);
+    const indirect = Math.round((vol[bp+'_indirect']||0) * 10) / 10;
+    const totalStim = direct + indirect;
+    const pct = Math.min(100, (totalStim/targets.max)*100);
+    const directPct = Math.min(100, (direct/targets.max)*100);
     let color='green';
-    if(sets<targets.min) color='red'; else if(sets>targets.max) color='red'; else if(sets<targets.optimal) color='yellow';
+    if(direct<targets.min && totalStim<targets.optimal) color='red';
+    else if(direct>targets.max) color='red';
+    else if(direct<targets.optimal) color='yellow';
     const label = bp.charAt(0).toUpperCase()+bp.slice(1);
-    html += '<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-weight:600;font-size:.85rem;">'+label+'</span><span style="font-size:.8rem;color:var(--text2);">'+sets+' sets <span style="opacity:.6;">(target: '+targets.min+'-'+targets.max+')</span></span></div>';
-    html += '<div class="coach-bar-container"><div class="coach-bar-fill '+color+'" style="width:'+pct+'%">'+sets+'</div></div>';
+    const indirectLabel = indirect>0 ? ' <span style="color:var(--highlight);">+ '+indirect+' indirect</span>' : '';
+    html += '<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap;"><span style="font-weight:600;font-size:.85rem;">'+label+'</span><span style="font-size:.8rem;color:var(--text2);">'+direct+' direct'+indirectLabel+' <span style="opacity:.6;">(target: '+targets.min+'-'+targets.max+')</span></span></div>';
+    html += '<div class="coach-bar-container" style="position:relative;">';
+    html += '<div class="coach-bar-fill '+color+'" style="width:'+directPct+'%">'+direct+'</div>';
+    if(indirect>0) {
+      const indirectWidth = Math.min(100-directPct, (indirect/targets.max)*100);
+      html += '<div style="position:absolute;top:0;left:'+directPct+'%;height:100%;width:'+indirectWidth+'%;background:repeating-linear-gradient(45deg,var(--highlight),var(--highlight) 4px,transparent 4px,transparent 8px);opacity:.55;"></div>';
+    }
+    html += '</div>';
+    if(indirect>0) html += '<div style="font-size:.7rem;color:var(--text2);margin-top:2px;">Total stimulus ≈ '+(Math.round(totalStim*10)/10)+' sets (direct + indirect)</div>';
     if(bp==='legs'&&(vol['legs_hiit']||0)>0) html+='<div style="font-size:.72rem;color:var(--orange);margin-top:2px;">Includes ~'+(vol['legs_hiit']||0)+' Peloton fatigue-equivalent sets</div>';
     html += '</div>';
   });
@@ -8012,7 +8140,13 @@ function renderRecovery() {
   html += '<div class="card" style="cursor:pointer;" onclick="openGradePopup(\''+recReadGpId+'\')"><div class="readiness-gauge"><div class="readiness-circle" style="background:conic-gradient('+readColor+' '+readiness*3.6+'deg,var(--input-bg) 0deg)"><span style="background:var(--card);width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;">'+readiness+'</span></div><div class="readiness-label">Readiness Score (0-100) <span style="font-size:.65rem;color:var(--highlight);">tap for details</span></div></div></div>';
 
   if(acwr) {
-    html += '<div class="card"><h3>Acute:Chronic Workload Ratio</h3>';
+    const acwrTip = infoTip(
+      '<div class="tip-section"><strong>What it is:</strong> Your short-term training stress (last 7 days) divided by your long-term average (last 28 days).</div>'+
+      '<div class="tip-section"><strong>Why it matters:</strong> When acute load spikes far above what your body is used to, injury and overtraining risk climb sharply.</div>'+
+      '<div class="tip-section"><strong>How to read it:</strong> &lt;0.8 undertrained (you can push more). 0.8–1.3 sweet spot. 1.3–1.5 caution — back off slightly. &gt;1.5 danger — consider a lighter session or rest day.</div>'+
+      '<div class="tip-section"><strong>Load units:</strong> Training Stress Score per session = weight × reps × sets, scaled by effort.</div>'
+    );
+    html += '<div class="card"><h3>Acute:Chronic Workload Ratio'+acwrTip+'</h3>';
     html += '<div style="text-align:center;font-size:2.5rem;font-weight:800;color:'+zoneColor(acwr.zone)+';margin:16px 0;">'+acwr.ratio+'</div>';
     html += '<div class="coach-metric"><span class="cm-label">Acute Load (7 days)</span><span class="cm-value">'+acwr.acute+'</span></div>';
     html += '<div class="coach-metric"><span class="cm-label">Chronic Load (28-day avg)</span><span class="cm-value">'+acwr.chronic+'</span></div>';
@@ -8022,7 +8156,13 @@ function renderRecovery() {
   html += '</div>';
 
   // Muscle recovery traffic lights
-  html += '<div class="card"><h3>Muscle Recovery Status</h3>';
+  const recTip = infoTip(
+    '<div class="tip-section"><strong>What it shows:</strong> How long since each muscle group was last trained, and whether it has finished recovering.</div>'+
+    '<div class="tip-section"><strong>Recovery windows (muscle protein synthesis):</strong> Chest / shoulders / arms / core ≈ 48h. Back / legs ≈ 72h (larger muscles and heavier compounds need longer).</div>'+
+    '<div class="tip-section"><strong>Colors:</strong> 🟢 Fully recovered — ready to train hard. 🟡 Partially recovered — light or technique work only. 🔴 Still recovering — skip or pick a different muscle.</div>'+
+    '<div class="tip-section"><strong>Timezone:</strong> Times are calculated in Melbourne local time.</div>'
+  );
+  html += '<div class="card"><h3>Muscle Recovery Status'+recTip+'</h3>';
   Object.entries(recovery).forEach(([bp,data]) => {
     html += '<div class="coach-metric"><span class="cm-label"><span class="traffic-light '+data.status+'"></span>'+bp.charAt(0).toUpperCase()+bp.slice(1)+'</span>';
     if(data.hours>500) html += '<span class="cm-value" style="color:var(--text2)">No recent data</span>';
@@ -8033,8 +8173,18 @@ function renderRecovery() {
 
   // Other fatigue metrics
   html += '<div class="coach-grid">';
-  html += '<div class="card"><h3>Spinal Loading (7-day)</h3><div style="text-align:center;font-size:2rem;font-weight:800;color:'+(spinal.level==='HIGH'?'#e74c3c':spinal.level==='MODERATE'?'var(--orange)':'var(--green)')+';margin:12px 0;">'+spinal.score+'</div><div style="text-align:center;font-size:.85rem;color:var(--text2);">'+spinal.level+'</div></div>';
-  html += '<div class="card"><h3>Fatigue Indicators</h3>';
+  const spinalTip = infoTip(
+    '<div class="tip-section"><strong>What it is:</strong> A 7-day stress score for your lower back / spinal erectors.</div>'+
+    '<div class="tip-section"><strong>Where it comes from:</strong> Sum of (exercise factor × weight × reps ÷ 1000) across spine-loading lifts. Deadlifts and RDLs weigh 3.0, squats 2.5–3.0, barbell rows 2.0, leg press 1.5, shrugs 1.5.</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> The spine recovers slower than muscle. Stacking heavy axial loads in one week is the #1 driver of disc / erector strains.</div>'+
+    '<div class="tip-section"><strong>Zones:</strong> LOW (&lt;10) green — safe. MODERATE (10–20) amber — distribute loads. HIGH (&gt;20) red — swap in belt-squat / machine alternatives, or give spine a week.</div>'
+  );
+  html += '<div class="card"><h3>Spinal Loading (7-day)'+spinalTip+'</h3><div style="text-align:center;font-size:2rem;font-weight:800;color:'+(spinal.level==='HIGH'?'#e74c3c':spinal.level==='MODERATE'?'var(--orange)':'var(--green)')+';margin:12px 0;">'+spinal.score+'</div><div style="text-align:center;font-size:.85rem;color:var(--text2);">'+spinal.level+'</div></div>';
+  const fatigueTip = infoTip(
+    '<div class="tip-section"><strong>Consecutive Days:</strong> Days you trained in a row without rest. Ideal ≤ 2 for hard lifting (3 is ok in a crunch); ≥ 5 means CNS and joints are accumulating fatigue faster than they can recover.</div>'+
+    '<div class="tip-section"><strong>Weeks Since Deload:</strong> A deload is a planned easy week (sets cut in half, same weights) that lets soft tissue and the nervous system recover. Schedule one every 4–6 weeks; overdue deloads predict stalls and injury.</div>'
+  );
+  html += '<div class="card"><h3>Fatigue Indicators'+fatigueTip+'</h3>';
   html += '<div class="coach-metric"><span class="cm-label">Consecutive Days</span><span class="cm-value" style="color:'+(consec>=5?'#e74c3c':consec>=3?'var(--orange)':'var(--green)')+'">'+consec+'</span></div>';
   html += '<div class="coach-metric"><span class="cm-label">Weeks Since Deload</span><span class="cm-value" style="color:'+(weeksSinceDeload>=6?'#e74c3c':weeksSinceDeload>=4?'var(--orange)':'var(--green)')+'">'+weeksSinceDeload+'</span></div>';
   html += '</div>';
@@ -8132,11 +8282,18 @@ function renderPRs() {
 
   entries.forEach(([name,pr]) => {
     const bp = getBodyPartForExercise(name);
+    const isPlanks = name === 'Planks';
     html += '<div class="pr-card"><div class="pr-exercise">'+name+' <span class="coach-tag blue">'+(bp||'')+'</span> <span style="font-size:.7rem;color:var(--text2);">'+pr.sessions+' sessions</span></div>';
-    html += '<div class="pr-detail">Best Weight: <strong>'+pr.bestWeight+'kg</strong> <span style="color:var(--text2);font-size:.75rem;">('+pr.bestWeightDate+')</span></div>';
-    html += '<div class="pr-detail">Best Reps: <strong>'+pr.bestReps+'</strong> <span style="color:var(--text2);font-size:.75rem;">('+pr.bestRepsDate+')</span></div>';
-    html += '<div class="pr-detail">Est. 1RM: <strong>'+pr.bestE1RM+'kg</strong> <span style="color:var(--text2);font-size:.75rem;">('+pr.bestE1RMDate+')</span></div>';
-    html += '<div class="pr-detail">Best Volume Load: <strong>'+pr.bestVL.toLocaleString()+'kg</strong></div>';
+    if(isPlanks) {
+      // Plank PRs are measured in hold time, not load.
+      html += '<div class="pr-detail">Longest Hold: <strong>'+pr.bestReps+'s</strong> <span style="color:var(--text2);font-size:.75rem;">('+pr.bestRepsDate+')</span></div>';
+      html += '<div class="pr-detail">Total Time (best session): <strong>'+pr.bestVL.toLocaleString()+'s</strong></div>';
+    } else {
+      html += '<div class="pr-detail">Best Weight: <strong>'+pr.bestWeight+'kg</strong> <span style="color:var(--text2);font-size:.75rem;">('+pr.bestWeightDate+')</span></div>';
+      html += '<div class="pr-detail">Best Reps: <strong>'+pr.bestReps+'</strong> <span style="color:var(--text2);font-size:.75rem;">('+pr.bestRepsDate+')</span></div>';
+      html += '<div class="pr-detail">Est. 1RM: <strong>'+pr.bestE1RM+'kg</strong> <span style="color:var(--text2);font-size:.75rem;">('+pr.bestE1RMDate+')</span></div>';
+      html += '<div class="pr-detail">Best Volume Load: <strong>'+pr.bestVL.toLocaleString()+'kg</strong></div>';
+    }
     html += '</div>';
   });
   html += '</div>';
@@ -8290,7 +8447,13 @@ function renderInjuryPrevention() {
   let html = '<div class="coach-section"><h3>Injury Prevention Dashboard</h3>';
 
   // Spinal loading
-  html += '<div class="card"><h3>Spinal Loading (7-Day)</h3>';
+  const spinalTipIP = infoTip(
+    '<div class="tip-section"><strong>What it is:</strong> A 7-day stress score for your lower back / spinal erectors.</div>'+
+    '<div class="tip-section"><strong>Where it comes from:</strong> Σ (exercise factor × weight × reps ÷ 1000) across spine-loading lifts. Deadlifts and RDLs factor 3.0, squats 2.5–3.0, rows 2.0, leg press 1.5.</div>'+
+    '<div class="tip-section"><strong>Target:</strong> LOW (&lt;10) safe. MODERATE (10–20) acceptable if warm-up is thorough. HIGH (&gt;20) cut one axial lift or swap to a machine variant.</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> The spine recovers slower than muscle. Piling heavy compounds into one week is the biggest driver of disc and erector strains.</div>'
+  );
+  html += '<div class="card"><h3>Spinal Loading (7-Day)'+spinalTipIP+'</h3>';
   const spinalPct = Math.min(100,(parseFloat(spinal.score)/20)*100);
   html += '<div class="coach-bar-container" style="height:30px;"><div class="coach-bar-fill '+(spinal.level==='HIGH'?'red':spinal.level==='MODERATE'?'yellow':'green')+'" style="width:'+spinalPct+'%">'+spinal.score+' ('+spinal.level+')</div></div>';
   html += '<div style="font-size:.8rem;color:var(--text2);margin-top:8px;">';
@@ -8307,13 +8470,25 @@ function renderInjuryPrevention() {
       if(n.includes('press')||n.includes('bench')) pressSets+=getWorkingSetsFromExercise(ex).length;
     });
   });
-  html += '<div class="card"><h3>Weekly Pressing Volume</h3>';
+  const pressTip = infoTip(
+    '<div class="tip-section"><strong>What it is:</strong> Total working sets of bench-pressing and overhead-pressing in the last 7 days.</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Pressing compresses the front of the shoulder (anterior capsule, long head of biceps, supraspinatus tendon). Too much pressing volume — especially without matching pulling work — is the #1 driver of shoulder impingement and rotator cuff overuse.</div>'+
+    '<div class="tip-section"><strong>Target:</strong> 8–14 weekly sets for most lifters. 14–16 only if pulling volume matches. &gt;16–18 sets = high risk zone, cut a session or swap bench for dumbbell/landmine variants.</div>'+
+    '<div class="tip-section"><strong>How to reduce it:</strong> Rotate incline ↔ flat weekly, swap one press for a dip or push-up variation, or replace with chest flies (isolation = less shoulder stress).</div>'
+  );
+  html += '<div class="card"><h3>Weekly Pressing Volume'+pressTip+'</h3>';
   html += '<div class="coach-metric"><span class="cm-label">Total pressing sets (chest + shoulder)</span><span class="cm-value" style="color:'+(pressSets>18?'#e74c3c':pressSets>14?'var(--orange)':'var(--green)')+'">'+pressSets+'</span></div>';
   if(pressSets>16) html += '<div style="font-size:.8rem;color:var(--orange);margin-top:8px;">High pressing volume increases shoulder impingement risk. Ensure equal or greater pulling volume and include face pulls / rear delt work.</div>';
   html += '</div>';
 
   // Push:Pull
-  html += '<div class="card"><h3>Push:Pull Balance</h3>';
+  const ppTip = infoTip(
+    '<div class="tip-section"><strong>What it is:</strong> Weekly push sets (chest + shoulders + triceps) ÷ pull sets (back + biceps).</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Pressing pulls the shoulders forward; rowing pulls them back. When push dominates, the rear delts and mid-back undertrain, posture collapses forward, and the rotator cuff takes on work it\'s not built for — leading to impingement, anterior shoulder pain, and upper-back tightness.</div>'+
+    '<div class="tip-section"><strong>Target ratio:</strong> 0.8–1.2 (ideally slightly pull-dominant). Above 1.3 is push-dominant and increases injury risk. Above 1.5 is a red flag — add a dedicated pull-day exercise.</div>'+
+    '<div class="tip-section"><strong>How to fix it:</strong> If push-heavy, add rows, face pulls, or rear delt flies. Aim for at least 1 pulling set for every pushing set.</div>'
+  );
+  html += '<div class="card"><h3>Push:Pull Balance'+ppTip+'</h3>';
   const ratio = pp.pull>0?pp.push/pp.pull:0;
   html += '<div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value" style="color:'+(ratio>1.4?'var(--orange)':'var(--green)')+'">'+pp.ratio+'</span></div>';
   if(ratio>1.3) html += '<div style="font-size:.8rem;color:var(--orange);margin-top:8px;">Push-dominant pattern. Add more rows, pulldowns, or face pulls for shoulder health.</div>';
@@ -8321,7 +8496,12 @@ function renderInjuryPrevention() {
   html += '</div>';
 
   // Muscles trained while not recovered
-  html += '<div class="card"><h3>Recovery Warnings</h3>';
+  const recWarnTip = infoTip(
+    '<div class="tip-section"><strong>What it shows:</strong> Muscle groups that were trained so recently they haven\'t finished recovering yet.</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Re-training a muscle before muscle protein synthesis finishes leads to accumulated fatigue, joint stress, and much higher injury risk for weeks on end.</div>'+
+    '<div class="tip-section"><strong>How to act:</strong> Swap today\'s session for a different muscle group, do cardio, or rest. If you must train it, cut volume in half and stop short of failure.</div>'
+  );
+  html += '<div class="card"><h3>Recovery Warnings'+recWarnTip+'</h3>';
   let warnings=0;
   Object.entries(recovery).forEach(([bp,data]) => {
     if(data.status==='red') { warnings++; html += '<div class="coach-alert danger" style="margin-bottom:8px;">'+bp.charAt(0).toUpperCase()+bp.slice(1)+' was trained '+data.hours+'h ago and is still recovering ('+data.hoursLeft+'h remaining). Training again now increases injury risk.</div>'; }
@@ -8870,10 +9050,36 @@ function renderTrainingMap() {
   function renderMuscleBreakdown(muscles, title, weekCount) {
     const entries = Object.entries(muscles).sort((a,b)=>b[1].sets-a[1].sets);
     if(!entries.length) return '<div style="color:var(--text2);font-size:.85rem;">No data.</div>';
-    const maxSets = entries[0][1].sets;
     const weekDiv = weekCount||1;
+    // Single, status-based palette — same across every region so you can scan for problems at a glance.
+    // Green = inside the optimal hypertrophy range. Amber = under-dosed. Red = over-dosed. Gray = untrained.
+    // Standards: 4-11 working sets/wk per muscle head is the evidence-backed sweet spot for hypertrophy.
+    const STATUS = {
+      good:     {color:'#2ecc71', bg:'rgba(46,204,113,.18)', label:'GOOD',       desc:'4–11 sets/wk — optimal hypertrophy range.'},
+      low:      {color:'#f39c12', bg:'rgba(243,156,18,.18)', label:'LOW',        desc:'1–3 sets/wk — below minimum effective volume.'},
+      over:     {color:'#e74c3c', bg:'rgba(231,76,60,.18)',  label:'OVERWORKED', desc:'12+ sets/wk — exceeds recoverable volume for this head.'},
+      skipped:  {color:'#7f8c8d', bg:'rgba(127,140,141,.18)',label:'SKIPPED',    desc:'0 sets — no direct stimulus. Creates imbalances.'}
+    };
+    function statusFor(wkSets) {
+      if(wkSets<=0) return STATUS.skipped;
+      if(wkSets>=12) return STATUS.over;
+      if(wkSets>=4) return STATUS.good;
+      return STATUS.low;
+    }
+    // Bar fill = your sets as a % of 12 (the top of the optimal range).
+    // Anything over 12 clips to 100% and is colored red anyway, so the scale stays legible.
+    const BAR_SCALE = 12;
     let h = '';
-    // Group by body region
+    // Legend is terse — same colors as every bar below so there's nothing to re-learn per row.
+    h += '<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:.68rem;margin-bottom:10px;padding:8px 10px;background:var(--card2);border-radius:6px;">';
+    h += '<span style="color:var(--text2);font-weight:600;margin-right:4px;">Standard (sets/week per muscle head):</span>';
+    ['skipped','low','good','over'].forEach(k => {
+      const s = STATUS[k];
+      h += '<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:'+s.color+';"></span><span style="color:'+s.color+';font-weight:700;">'+s.label+'</span></span>';
+    });
+    h += '<span style="color:var(--text2);font-size:.66rem;">(0 · 1–3 · 4–11 · 12+)</span>';
+    h += '</div>';
+
     const regions = {
       'Chest':['Upper Chest','Mid Chest','Lower Chest','Inner Chest'],
       'Shoulders':['Front Delts','Side Delts','Rear Delts','External Rotators'],
@@ -8887,47 +9093,60 @@ function renderTrainingMap() {
       'Core':['Rectus Abs','Rectus Abs (Upper)','Lower Abs','Transverse Abs','Obliques','Serratus'],
       'Other':['Forearms','Core','Unknown']
     };
+
+    // Quick region summary strip — tells you at one glance which regions are under/over/optimal.
+    // For each region, take the average weekly sets across muscle heads that have any data.
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:6px;margin-bottom:14px;">';
+    Object.entries(regions).forEach(([region, muscleNames]) => {
+      if(region==='Other') return;
+      const present = muscleNames.filter(m=>muscles[m]);
+      const totalWeekly = present.reduce((sum,m)=>sum+(muscles[m].sets/weekDiv),0);
+      const avgWeekly = present.length ? totalWeekly/present.length : 0;
+      const st = present.length ? statusFor(avgWeekly) : STATUS.skipped;
+      h += '<div style="padding:8px 6px;background:'+st.bg+';border:1px solid '+st.color+';border-radius:6px;text-align:center;">';
+      h += '<div style="font-size:.7rem;color:var(--text);font-weight:700;">'+region+'</div>';
+      h += '<div style="font-size:1.1rem;font-weight:800;color:'+st.color+';line-height:1.1;margin-top:2px;">'+avgWeekly.toFixed(1)+'</div>';
+      h += '<div style="font-size:.6rem;color:'+st.color+';font-weight:700;letter-spacing:.3px;">'+st.label+'</div>';
+      h += '<div style="font-size:.55rem;color:var(--text2);">sets/wk avg</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+
     Object.entries(regions).forEach(([region, muscleNames]) => {
       const regionMuscles = muscleNames.filter(m=>muscles[m]).map(m=>({name:m,...muscles[m],exercises:Array.from(muscles[m].exercises)}));
       if(!regionMuscles.length) return;
-      const regionColor = region==='Chest'?'#3498db':region==='Shoulders'?'#e94560':region==='Back'?'#2ecc71':region==='Biceps'?'#9b59b6':region==='Triceps'?'#f1c40f':region.includes('Quad')?'#e67e22':region.includes('Glute')?'#e67e22':region==='Hamstrings'?'#e67e22':region==='Calves'?'#e67e22':region==='Core'?'#1abc9c':'var(--text2)';
-      h += '<div style="margin-bottom:12px;">';
-      h += '<div style="font-weight:700;font-size:.82rem;color:'+regionColor+';margin-bottom:4px;">'+region+'</div>';
+      h += '<div style="margin-bottom:14px;">';
+      h += '<div style="font-weight:700;font-size:.82rem;color:var(--text);margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid var(--border);">'+region+'</div>';
       regionMuscles.forEach(m => {
-        const pct = maxSets>0?(m.sets/maxSets)*100:0;
-        const weeklyAvg = (m.sets/weekDiv).toFixed(1);
-        // Status: overworked / good / underworked / skipped
-        let status='', statusColor='var(--text2)';
-        const wkSets = parseFloat(weeklyAvg);
-        if(m.type==='primary') {
-          if(wkSets>=12) { status='OVERWORKED'; statusColor='#e74c3c'; }
-          else if(wkSets>=4) { status='GOOD'; statusColor='var(--green)'; }
-          else if(wkSets>=1) { status='LOW'; statusColor='var(--orange)'; }
-          else { status='SKIPPED'; statusColor='#e74c3c'; }
-        }
-        let statusReason = '';
-        if(status==='OVERWORKED') statusReason='12+ sets/wk exceeds recoverable volume for a single muscle head. Risk of overtraining, joint stress, and diminishing returns.';
-        else if(status==='GOOD') statusReason='4-11 sets/wk is the optimal hypertrophy range for individual muscles (based on research: 4-8 direct sets for small muscles, 6-12 for large).';
-        else if(status==='LOW') statusReason='1-3 sets/wk is below minimum effective volume. Growth stimulus is insufficient for meaningful adaptation.';
-        else if(status==='SKIPPED') statusReason='0 sets = no direct stimulus. This muscle will not grow and may create imbalances with opposing muscles.';
-        h += '<div style="margin-bottom:4px;">';
-        h += '<div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:1px;"><span>'+m.name+(status?' <span style="font-size:.65rem;font-weight:700;color:'+statusColor+';">'+status+'</span>':'')+'</span><span style="color:var(--text2);">'+m.sets+' sets'+(weekDiv>1?' (~'+weeklyAvg+'/wk)':'')+'</span></div>';
-        h += '<div class="coach-bar-container" style="height:14px;"><div class="coach-bar-fill" style="width:'+pct+'%;background:'+regionColor+'55;font-size:.6rem;">'+m.sets+'</div></div>';
-        h += '<div style="font-size:.65rem;color:var(--text2);">'+m.exercises.join(', ')+'</div>';
-        if(statusReason) h += '<div style="font-size:.62rem;color:'+statusColor+';margin-top:1px;font-style:italic;">'+statusReason+'</div>';
+        const weeklyAvg = m.sets/weekDiv;
+        const st = m.type==='primary' ? statusFor(weeklyAvg) : STATUS.good;
+        const pct = Math.min(100, (weeklyAvg/BAR_SCALE)*100);
+        h += '<div style="margin-bottom:6px;">';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;font-size:.78rem;margin-bottom:2px;gap:6px;flex-wrap:wrap;">';
+        h += '<span style="flex:1;min-width:0;">'+m.name+' <span style="font-size:.62rem;font-weight:700;color:'+st.color+';padding:1px 5px;border-radius:3px;background:'+st.bg+';">'+st.label+'</span></span>';
+        h += '<span style="color:var(--text2);font-size:.72rem;">'+m.sets+' sets'+(weekDiv>1?' (~'+weeklyAvg.toFixed(1)+'/wk)':'')+'</span>';
+        h += '</div>';
+        h += '<div class="coach-bar-container" style="height:10px;background:var(--input-bg);position:relative;">';
+        // Shade the "optimal" band (4–11 sets/wk) faintly so the standard is visible on every bar.
+        const bandStart = (4/BAR_SCALE)*100;
+        const bandEnd = (11/BAR_SCALE)*100;
+        h += '<div style="position:absolute;top:0;bottom:0;left:'+bandStart+'%;width:'+(bandEnd-bandStart)+'%;background:rgba(46,204,113,.08);border-left:1px dashed rgba(46,204,113,.35);border-right:1px dashed rgba(46,204,113,.35);"></div>';
+        h += '<div style="height:100%;width:'+pct+'%;background:'+st.color+';border-radius:6px;"></div>';
+        h += '</div>';
+        h += '<div style="font-size:.62rem;color:var(--text2);margin-top:1px;">'+m.exercises.join(', ')+'</div>';
         h += '</div>';
       });
       h += '</div>';
     });
 
-    // Find skipped muscles
+    // Skipped muscles — the outlier callout stays so you notice gaps.
     const allPossible = Object.values(regions).flat();
     const skipped = allPossible.filter(m=>!muscles[m]&&!['Unknown','Core','Forearms','Calves','Serratus','Levator Scapulae','External Rotators','Teres Major','Hip Flexors'].includes(m));
     if(skipped.length) {
-      h += '<div style="margin-top:8px;padding:8px;background:rgba(231,76,60,.08);border:1px dashed #e74c3c;border-radius:6px;">';
-      h += '<div style="font-weight:700;font-size:.8rem;color:#e74c3c;margin-bottom:4px;">Not Trained ('+skipped.length+' muscles):</div>';
-      h += '<div style="font-size:.78rem;color:var(--text2);margin-bottom:4px;">'+skipped.join(', ')+'</div>';
-      h += '<div style="font-size:.65rem;color:var(--orange);font-style:italic;">Untrained muscles create imbalances. Opposing muscle pairs (e.g., biceps/triceps, quads/hamstrings, front/rear delts) should have roughly equal weekly volume to prevent injury and postural issues.</div>';
+      h += '<div style="margin-top:8px;padding:8px 10px;background:rgba(127,140,141,.12);border:1px dashed #7f8c8d;border-radius:6px;">';
+      h += '<div style="font-weight:700;font-size:.78rem;color:#bdc3c7;margin-bottom:4px;">Not Trained ('+skipped.length+' muscles):</div>';
+      h += '<div style="font-size:.74rem;color:var(--text2);">'+skipped.join(', ')+'</div>';
+      h += '<div style="font-size:.65rem;color:var(--text2);font-style:italic;margin-top:4px;">Untrained muscles create imbalances. Opposing pairs (biceps/triceps, quads/hams, front/rear delts) should have roughly equal weekly volume.</div>';
       h += '</div>';
     }
     return h;
@@ -9123,24 +9342,30 @@ function _doUpdateTrainingMap() {
     // fall back to rolling for any other range that may slip through.
     const startDate = gridStart ? new Date(gridStart) : (() => { const s = new Date(); s.setDate(s.getDate()-(days-1)); return s; })();
     const showDays = gridDays;
-    html += '<div class="card"><h3>'+rangeLabel+' - Day Grid</h3>';
-    html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:8px;">';
+    html += '<div class="card"><h3>'+rangeLabel+' · Day Grid</h3>';
+    html += '<div style="font-size:.68rem;color:var(--text2);margin-bottom:8px;">Each tile is one day. Filled tile = you trained; empty = rest. Body parts listed below the date.</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">';
     for(let i=0;i<showDays;i++) {
       const d = new Date(startDate); d.setDate(startDate.getDate()+i);
       const ds = formatDate(d);
       const dayW = filtered.filter(w=>w.date===ds);
       const isToday = ds===todayStr();
-      html += '<div style="text-align:center;padding:4px 2px;background:'+(isToday?'var(--accent)':'var(--card2)')+';border-radius:6px;border:1px solid '+(isToday?'var(--highlight)':'var(--border)')+';min-height:50px;">';
-      html += '<div style="font-size:.65rem;font-weight:700;color:'+(isToday?'var(--highlight)':'var(--text2)')+';">'+DAY_SHORT_L[d.getDay()]+' '+d.getDate()+'</div>';
-      if(dayW.length) {
+      const trained = dayW.length > 0;
+      // Neutral palette: slightly brighter background if trained, accent border if today.
+      const bg = trained ? 'var(--card2)' : 'transparent';
+      const borderCol = isToday ? 'var(--highlight)' : (trained ? 'var(--border)' : 'rgba(127,140,141,.25)');
+      const borderWeight = isToday ? '2px' : '1px';
+      html += '<div style="text-align:center;padding:6px 2px;background:'+bg+';border-radius:6px;border:'+borderWeight+' solid '+borderCol+';min-height:56px;">';
+      html += '<div style="font-size:.65rem;font-weight:700;color:'+(isToday?'var(--highlight)':(trained?'var(--text)':'var(--text2)'))+';">'+DAY_SHORT_L[d.getDay()]+' '+d.getDate()+'</div>';
+      if(trained) {
         const parts = new Set();
         dayW.forEach(w=>(w.bodyParts||[]).forEach(p=>parts.add(p)));
         parts.forEach(p => {
-          html += '<div style="font-size:.55rem;background:'+(PART_COLORS[p]||'var(--border)')+'44;color:'+(PART_COLORS[p]||'var(--text2)')+';border-radius:3px;padding:1px 2px;margin-bottom:1px;">'+p.charAt(0).toUpperCase()+p.slice(1,3)+'</div>';
+          html += '<div style="font-size:.58rem;color:var(--text);margin-top:2px;text-transform:capitalize;">'+p.slice(0,4)+'</div>';
         });
-        if(dayW.some(w=>w.peloton&&w.peloton.watts)) html += '<div style="font-size:.55rem;background:rgba(52,152,219,.3);color:var(--blue);border-radius:3px;padding:1px 2px;">HIIT</div>';
+        if(dayW.some(w=>w.peloton&&w.peloton.watts)) html += '<div style="font-size:.55rem;color:var(--text2);margin-top:1px;">HIIT</div>';
       } else {
-        html += '<div style="font-size:.55rem;color:var(--text2);">Rest</div>';
+        html += '<div style="font-size:.6rem;color:var(--text2);margin-top:8px;">·</div>';
       }
       html += '</div>';
     }
@@ -9219,10 +9444,11 @@ function _doUpdateTrainingMap() {
       const totalSets = exercises.reduce((s,e)=>s+e.sets,0);
       const weeklyAvg = (totalSets/weekDiv).toFixed(1);
       const wkSets = parseFloat(weeklyAvg);
-      let status='GOOD',statusColor='var(--green)',statusMsg='4-11 sets/wk is the optimal hypertrophy range.';
-      if(!exercises.length) { status='SKIPPED'; statusColor='#e74c3c'; statusMsg='No direct stimulus. This muscle will not grow and may create imbalances.'; }
+      // Keep the same single palette as renderMuscleBreakdown so the meaning of each color is consistent.
+      let status='GOOD', statusColor='#2ecc71', statusMsg='4–11 sets/wk is the optimal hypertrophy range.';
+      if(!exercises.length) { status='SKIPPED'; statusColor='#7f8c8d'; statusMsg='No direct stimulus. This muscle will not grow and may create imbalances.'; }
       else if(wkSets>=12) { status='OVERWORKED'; statusColor='#e74c3c'; statusMsg='12+ sets/wk exceeds recoverable volume. Risk of overtraining and joint stress.'; }
-      else if(wkSets<2) { status='LOW'; statusColor='var(--orange)'; statusMsg='Below minimum effective volume. Growth stimulus is insufficient.'; }
+      else if(wkSets<4) { status='LOW'; statusColor='#f39c12'; statusMsg='Below minimum effective volume (4 sets/wk). Growth stimulus is insufficient.'; }
 
       html += '<div style="margin-bottom:16px;padding:10px;background:var(--card2);border-radius:8px;border-left:3px solid '+statusColor+';">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><span style="font-weight:700;font-size:.9rem;">'+muscleFilter+'</span>';
@@ -9248,12 +9474,12 @@ function _doUpdateTrainingMap() {
         html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
         Object.entries(byExercise).sort((a,b)=>b[1].sets-a[1].sets).forEach(([name,data]) => {
           const isPel = name.startsWith('Peloton');
-          let bg, fg;
-          if(isPel) { bg='rgba(155,89,182,.18)'; fg='#bb6bd9'; }
-          else if(data.isPrimary) { bg='rgba(46,204,113,.12)'; fg='var(--green)'; }
-          else { bg='rgba(52,152,219,.12)'; fg='var(--blue)'; }
-          const unit = isPel?'W':'kg';
-          html += '<span style="font-size:.72rem;padding:3px 8px;border-radius:4px;background:'+bg+';color:'+fg+';font-weight:600;border:'+(isPel?'1px solid #9b59b6':'none')+';">'+(isPel?'🚴 ':'')+name+' ('+data.sets+' sets, '+data.maxKg+unit+')</span>';
+          // Keep chip styling muted — color meaning is reserved for the status palette above.
+          // Primary = solid outline, secondary = dashed outline, Peloton = bike glyph.
+          const unit = isPel ? 'W' : 'kg';
+          const borderStyle = data.isPrimary ? 'solid' : 'dashed';
+          const label = (data.isPrimary ? '' : '<span style="opacity:.6;">(indirect) </span>');
+          html += '<span style="font-size:.72rem;padding:3px 8px;border-radius:4px;background:var(--input-bg);color:var(--text);font-weight:600;border:1px '+borderStyle+' var(--border);">'+(isPel?'🚴 ':'')+label+name+' ('+data.sets+' sets, '+data.maxKg+unit+')</span>';
         });
         html += '</div>';
       }
