@@ -7533,7 +7533,7 @@ function setScoringMethod(m) { localStorage.setItem('gym_scoring_method', m); }
 const SCORING_METHODS = {
   optionA: {
     name:'Fixed Pools (Default)', short:'Default',
-    desc:'Rewards showing up and executing your program. Proportional credit for weight progression, rep progression, set consistency, volume, cardio, and form quality.',
+    desc:'A balanced all-rounder. You start with 5.0 just for training, then earn proportional credit across 6 categories. It rewards discipline — did you show up, lift consistently, and push for progress? Best for: beginners and general fitness tracking. A solid session where you maintain your weights with consistent reps scores ~8/10. To reach 10, you need progression on most exercises plus cardio.',
     poolsHtml:'<table style="width:100%;font-size:.68rem;border-collapse:collapse;margin-top:4px;"><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:2px 4px;">Pool</th><th style="text-align:right;padding:2px 4px;">Max</th><th style="text-align:left;padding:2px 4px;">How earned</th></tr>'+
     '<tr><td style="padding:2px 4px;">Base</td><td style="text-align:right;padding:2px 4px;">5.0</td><td style="padding:2px 4px;">You showed up and trained</td></tr>'+
     '<tr><td style="padding:2px 4px;">Weight Progression</td><td style="text-align:right;padding:2px 4px;">1.0</td><td style="padding:2px 4px;">% of exercises where you increased weight vs last session</td></tr>'+
@@ -7546,7 +7546,7 @@ const SCORING_METHODS = {
   },
   mechanical: {
     name:'Mechanical Tension Index', short:'Mech. Tension',
-    desc:'Based on Schoenfeld (2010). Mechanical tension is the #1 hypertrophy driver. Each rep is weighted by a nonlinear intensity factor reflecting motor unit recruitment at that % of your e1RM. Integrates Krieger (2010) dose-response data.',
+    desc:'The gold standard for hypertrophy science. Brad Schoenfeld (2010) showed that mechanical tension — the force your muscles produce against resistance — is the primary trigger for muscle growth. This system weights each rep by how much tension it actually generates, using a nonlinear curve: reps at 70-90% of your 1RM recruit nearly all motor units (high tension), while reps below 55% recruit mostly slow-twitch fibres (low tension). It also integrates Krieger\'s (2010) meta-analysis finding that 3-5 sets per exercise is the sweet spot — more gives diminishing returns. Best for: intermediate+ lifters focused on hypertrophy. A maintenance session at good intensity scores ~8/10.',
     poolsHtml:'<table style="width:100%;font-size:.68rem;border-collapse:collapse;margin-top:4px;"><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:2px 4px;">Pool</th><th style="text-align:right;padding:2px 4px;">Max</th><th style="text-align:left;padding:2px 4px;">How earned</th></tr>'+
     '<tr><td style="padding:2px 4px;">Tension Density</td><td style="text-align:right;padding:2px 4px;">3.0</td><td style="padding:2px 4px;">Ratio of actual mechanical tension to theoretical max (reps at 80%+ intensity generate more tension per rep)</td></tr>'+
     '<tr><td style="padding:2px 4px;">Volume-Tension Balance</td><td style="text-align:right;padding:2px 4px;">2.0</td><td style="padding:2px 4px;">3-5 sets/exercise = optimal (Krieger 2010). 1-2 or 6+ = diminishing returns</td></tr>'+
@@ -7557,7 +7557,7 @@ const SCORING_METHODS = {
   },
   intensity: {
     name:'Relative Intensity Profile', short:'Rel. Intensity',
-    desc:'Based on Eric Helms / MASS Research Review. Every set is expressed as % of your estimated 1RM. The session is scored on how well your intensity distribution matches the 65-85% hypertrophy sweet spot.',
+    desc:'Based on Eric Helms and the MASS Research Review framework. The core principle: for hypertrophy, the % of your max you lift matters more than the absolute weight. This system converts every set into a relative intensity (weight ÷ estimated 1RM × 100). The 65-85% zone is the hypertrophy sweet spot — heavy enough to recruit high-threshold motor units, light enough for meaningful volume. Sets below 50% are wasted; sets above 90% build strength but limited hypertrophy per rep. It also rewards consistent load selection (same weight across sets = good programming) and penalises sessions where intensity drops below your recent average. Best for: lifters who want to optimise their load selection. A well-programmed maintenance session scores ~8/10.',
     poolsHtml:'<table style="width:100%;font-size:.68rem;border-collapse:collapse;margin-top:4px;"><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:2px 4px;">Pool</th><th style="text-align:right;padding:2px 4px;">Max</th><th style="text-align:left;padding:2px 4px;">How earned</th></tr>'+
     '<tr><td style="padding:2px 4px;">Intensity Zone Quality</td><td style="text-align:right;padding:2px 4px;">3.5</td><td style="padding:2px 4px;">% of sets in 65-80% = full, 80-90% = 85%, 50-65% = 55%, &gt;90% or &lt;50% = low</td></tr>'+
     '<tr><td style="padding:2px 4px;">Per-Exercise Consistency</td><td style="text-align:right;padding:2px 4px;">2.0</td><td style="padding:2px 4px;">Consistent weight across sets within each exercise (low coefficient of variation)</td></tr>'+
@@ -7568,7 +7568,7 @@ const SCORING_METHODS = {
   },
   inol: {
     name:'INOL Session Quality', short:'INOL',
-    desc:'Based on Hristov\'s Intensity Number of Lifts. INOL = reps / (100 - intensity%). Heavier work makes each rep "count" more. Optimal per-exercise INOL is 0.4-1.0. Catches both under-training and over-training.',
+    desc:'Based on Hristo Hristov\'s INOL metric, widely used in powerlifting programming. The formula INOL = reps ÷ (100 - intensity%) elegantly captures a fundamental truth: one rep at 85% of your max is worth more than one rep at 60%. An exercise with INOL 0.4-1.0 is in the productive zone — enough stimulus to grow, not so much that recovery is compromised. Below 0.4 means insufficient stimulus (too light or too few reps). Above 2.0 means excessive volume that generates fatigue without proportional benefit. This system scores how well each exercise lands in the optimal INOL range. Best for: structured program followers who want a single-number quality check per exercise. A solid maintenance session scores ~7/10.',
     poolsHtml:'<table style="width:100%;font-size:.68rem;border-collapse:collapse;margin-top:4px;"><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:2px 4px;">Pool</th><th style="text-align:right;padding:2px 4px;">Max</th><th style="text-align:left;padding:2px 4px;">How earned</th></tr>'+
     '<tr><td style="padding:2px 4px;">Per-Exercise INOL Quality</td><td style="text-align:right;padding:2px 4px;">3.5</td><td style="padding:2px 4px;">INOL 0.4-1.0 = optimal (full). 1.0-1.5 = tough. &lt;0.4 = insufficient. &gt;2.0 = excessive</td></tr>'+
     '<tr><td style="padding:2px 4px;">Session Total INOL</td><td style="text-align:right;padding:2px 4px;">2.0</td><td style="padding:2px 4px;">Total INOL near target (1.0 per exercise). Too low or excessively high = lower score</td></tr>'+
