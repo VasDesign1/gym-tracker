@@ -7531,10 +7531,52 @@ function getScoringMethod() { return localStorage.getItem('gym_scoring_method')|
 function setScoringMethod(m) { localStorage.setItem('gym_scoring_method', m); }
 
 const SCORING_METHODS = {
-  optionA: {name:'Fixed Pools (Default)', short:'Default', desc:'Base 5.0 + proportional pools for weight progression, rep progression, consistency, volume, cardio, and form quality. Rewards showing up and executing your program.'},
-  mechanical: {name:'Mechanical Tension Index', short:'Mech. Tension', desc:'Based on Schoenfeld (2010) — mechanical tension is the primary hypertrophy driver. Each rep is weighted by a nonlinear intensity factor reflecting motor unit recruitment at that % of e1RM. Integrates Krieger (2010) dose-response data for optimal sets per exercise.'},
-  intensity: {name:'Relative Intensity Profile', short:'Rel. Intensity', desc:'Based on Eric Helms / MASS Research Review — scores how well your set intensities (% of estimated 1RM) match the optimal 65-85% hypertrophy zone. Rewards consistent load selection and training at productive intensities.'},
-  inol: {name:'INOL Session Quality', short:'INOL', desc:'Based on Hristov\'s Intensity Number of Lifts — INOL = reps / (100 - intensity%). A single metric combining volume and intensity. Optimal per-exercise INOL is 0.4-1.0. Catches both under-training and over-training.'}
+  optionA: {
+    name:'Fixed Pools (Default)', short:'Default',
+    desc:'Rewards showing up and executing your program. Proportional credit for weight progression, rep progression, set consistency, volume, cardio, and form quality.',
+    poolsHtml:'<table style="width:100%;font-size:.68rem;border-collapse:collapse;margin-top:4px;"><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:2px 4px;">Pool</th><th style="text-align:right;padding:2px 4px;">Max</th><th style="text-align:left;padding:2px 4px;">How earned</th></tr>'+
+    '<tr><td style="padding:2px 4px;">Base</td><td style="text-align:right;padding:2px 4px;">5.0</td><td style="padding:2px 4px;">You showed up and trained</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Weight Progression</td><td style="text-align:right;padding:2px 4px;">1.0</td><td style="padding:2px 4px;">% of exercises where you increased weight vs last session</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Rep Progression</td><td style="text-align:right;padding:2px 4px;">0.5</td><td style="padding:2px 4px;">% of exercises where you increased reps at same/higher weight</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Set Consistency</td><td style="text-align:right;padding:2px 4px;">1.5</td><td style="padding:2px 4px;">% of exercises with low rep variance across sets (stddev &lt;1.5)</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Volume</td><td style="text-align:right;padding:2px 4px;">0.5</td><td style="padding:2px 4px;">0.3 for 4+ exercises, +0.2 for 6+</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Peloton / Cardio</td><td style="text-align:right;padding:2px 4px;">0.3</td><td style="padding:2px 4px;">0.3 if Peloton ride included</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Form Quality</td><td style="text-align:right;padding:2px 4px;">1.2</td><td style="padding:2px 4px;">Full 1.2 minus proportional deductions for rep drop-offs</td></tr>'+
+    '<tr style="border-top:1px solid var(--border);font-weight:700;"><td style="padding:2px 4px;">Total</td><td style="text-align:right;padding:2px 4px;">10.0</td><td></td></tr></table>'
+  },
+  mechanical: {
+    name:'Mechanical Tension Index', short:'Mech. Tension',
+    desc:'Based on Schoenfeld (2010). Mechanical tension is the #1 hypertrophy driver. Each rep is weighted by a nonlinear intensity factor reflecting motor unit recruitment at that % of your e1RM. Integrates Krieger (2010) dose-response data.',
+    poolsHtml:'<table style="width:100%;font-size:.68rem;border-collapse:collapse;margin-top:4px;"><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:2px 4px;">Pool</th><th style="text-align:right;padding:2px 4px;">Max</th><th style="text-align:left;padding:2px 4px;">How earned</th></tr>'+
+    '<tr><td style="padding:2px 4px;">Tension Density</td><td style="text-align:right;padding:2px 4px;">3.0</td><td style="padding:2px 4px;">Ratio of actual mechanical tension to theoretical max (reps at 80%+ intensity generate more tension per rep)</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Volume-Tension Balance</td><td style="text-align:right;padding:2px 4px;">2.0</td><td style="padding:2px 4px;">3-5 sets/exercise = optimal (Krieger 2010). 1-2 or 6+ = diminishing returns</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Tension Progression</td><td style="text-align:right;padding:2px 4px;">2.0</td><td style="padding:2px 4px;">% of exercises where estimated 1RM improved vs last session</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Tension Distribution</td><td style="text-align:right;padding:2px 4px;">1.5</td><td style="padding:2px 4px;">Even contribution across exercises (not one exercise carrying the session)</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Dose-Response</td><td style="text-align:right;padding:2px 4px;">1.5</td><td style="padding:2px 4px;">2-6 direct sets per body part per session (Krieger optimal range)</td></tr>'+
+    '<tr style="border-top:1px solid var(--border);font-weight:700;"><td style="padding:2px 4px;">Total</td><td style="text-align:right;padding:2px 4px;">10.0</td><td></td></tr></table>'
+  },
+  intensity: {
+    name:'Relative Intensity Profile', short:'Rel. Intensity',
+    desc:'Based on Eric Helms / MASS Research Review. Every set is expressed as % of your estimated 1RM. The session is scored on how well your intensity distribution matches the 65-85% hypertrophy sweet spot.',
+    poolsHtml:'<table style="width:100%;font-size:.68rem;border-collapse:collapse;margin-top:4px;"><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:2px 4px;">Pool</th><th style="text-align:right;padding:2px 4px;">Max</th><th style="text-align:left;padding:2px 4px;">How earned</th></tr>'+
+    '<tr><td style="padding:2px 4px;">Intensity Zone Quality</td><td style="text-align:right;padding:2px 4px;">3.5</td><td style="padding:2px 4px;">% of sets in 65-80% = full, 80-90% = 85%, 50-65% = 55%, &gt;90% or &lt;50% = low</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Per-Exercise Consistency</td><td style="text-align:right;padding:2px 4px;">2.0</td><td style="padding:2px 4px;">Consistent weight across sets within each exercise (low coefficient of variation)</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Historical Match</td><td style="text-align:right;padding:2px 4px;">1.5</td><td style="padding:2px 4px;">Today\'s intensity matches or exceeds your recent average for each exercise</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Intensity Progression</td><td style="text-align:right;padding:2px 4px;">1.5</td><td style="padding:2px 4px;">% of exercises with estimated 1RM improvement</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Session Breadth</td><td style="text-align:right;padding:2px 4px;">1.5</td><td style="padding:2px 4px;">3+ exercises in hypertrophy zone, 5+ exercises, some heavy work (&gt;80%)</td></tr>'+
+    '<tr style="border-top:1px solid var(--border);font-weight:700;"><td style="padding:2px 4px;">Total</td><td style="text-align:right;padding:2px 4px;">10.0</td><td></td></tr></table>'
+  },
+  inol: {
+    name:'INOL Session Quality', short:'INOL',
+    desc:'Based on Hristov\'s Intensity Number of Lifts. INOL = reps / (100 - intensity%). Heavier work makes each rep "count" more. Optimal per-exercise INOL is 0.4-1.0. Catches both under-training and over-training.',
+    poolsHtml:'<table style="width:100%;font-size:.68rem;border-collapse:collapse;margin-top:4px;"><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:2px 4px;">Pool</th><th style="text-align:right;padding:2px 4px;">Max</th><th style="text-align:left;padding:2px 4px;">How earned</th></tr>'+
+    '<tr><td style="padding:2px 4px;">Per-Exercise INOL Quality</td><td style="text-align:right;padding:2px 4px;">3.5</td><td style="padding:2px 4px;">INOL 0.4-1.0 = optimal (full). 1.0-1.5 = tough. &lt;0.4 = insufficient. &gt;2.0 = excessive</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Session Total INOL</td><td style="text-align:right;padding:2px 4px;">2.0</td><td style="padding:2px 4px;">Total INOL near target (1.0 per exercise). Too low or excessively high = lower score</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Intensity Distribution</td><td style="text-align:right;padding:2px 4px;">1.5</td><td style="padding:2px 4px;">At least some exercises above 65% and 75% of e1RM</td></tr>'+
+    '<tr><td style="padding:2px 4px;">INOL Progression</td><td style="text-align:right;padding:2px 4px;">1.5</td><td style="padding:2px 4px;">% of exercises where INOL improved vs last session</td></tr>'+
+    '<tr><td style="padding:2px 4px;">Exercise Breadth</td><td style="text-align:right;padding:2px 4px;">1.5</td><td style="padding:2px 4px;">3+ productive exercises, 5+ productive exercises, 2+ body parts</td></tr>'+
+    '<tr style="border-top:1px solid var(--border);font-weight:700;"><td style="padding:2px 4px;">Total</td><td style="text-align:right;padding:2px 4px;">10.0</td><td></td></tr></table>'
+  }
 };
 
 // Dispatcher: calls the right scoring function based on user preference.
@@ -8526,14 +8568,14 @@ function renderSessionAnalysis() {
   });
   html += '</select></div>';
   html += '<div><label style="font-size:.78rem;color:var(--text2);display:block;margin-bottom:3px;">Scoring Method</label>';
-  html += '<select id="coach-scoring-method" onchange="setScoringMethod(this.value);var ss=document.getElementById(\'coach-session-select\');if(ss)coachAnalyzeSession(ss.value);" style="min-width:160px;">';
+  html += '<select id="coach-scoring-method" onchange="window.setScoringMethod(this.value)" style="min-width:160px;">';
   Object.entries(SCORING_METHODS).forEach(([key,m]) => {
     html += '<option value="'+key+'"'+(curMethod===key?' selected':'')+'>'+m.short+'</option>';
   });
   html += '</select></div></div>';
   // Method description
   const mInfo = SCORING_METHODS[curMethod]||SCORING_METHODS.optionA;
-  html += '<div id="scoring-method-desc" style="font-size:.72rem;color:var(--text2);padding:8px 10px;background:var(--card2);border-radius:6px;margin-bottom:12px;">'+mInfo.desc+'</div>';
+  html += '<div id="scoring-method-desc" style="font-size:.72rem;color:var(--text2);padding:8px 10px;background:var(--card2);border-radius:6px;margin-bottom:12px;"><strong style="color:var(--blue);">'+mInfo.name+'</strong><br>'+mInfo.desc+'<br><br>'+mInfo.poolsHtml+'</div>';
   html += '<div id="coach-session-detail"></div></div>';
 
   setTimeout(() => {
@@ -10497,6 +10539,16 @@ window.coachAnalyzeSession = function(dateStr) {
 
 // ===================== GLOBAL FUNCTIONS =====================
 window.switchCoachPanel = switchCoachPanel;
+window.setScoringMethod = function(m) {
+  setScoringMethod(m);
+  // Update the description text.
+  const descEl = document.getElementById('scoring-method-desc');
+  const info = SCORING_METHODS[m];
+  if(descEl && info) descEl.innerHTML = '<strong style="color:var(--blue);">'+info.name+'</strong><br>'+info.desc+'<br><br>'+info.poolsHtml;
+  // Re-analyze the selected session.
+  const ss = document.getElementById('coach-session-select');
+  if(ss) coachAnalyzeSession(ss.value);
+};
 
 window.initCoachTab = function() {
   const profile = getProfile();
