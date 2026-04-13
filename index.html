@@ -7440,12 +7440,11 @@ function gradeSession(workout) {
     exBreakdowns.push({name, pts:exPts, sets:ws.map(s=>s.kg+'kg x '+s.reps)});
   });
 
-  // Show 0-point rows for categories that didn't earn anything so the user can see
-  // exactly where the missing points went in the breakdown.
-  if(overloadCount===0) breakdown.push({text:'No weight increase on any exercise',pts:0,running:runningScore});
-  if(repOverloadCount===0) breakdown.push({text:'No rep increase at same/higher weight',pts:0,running:runningScore});
-  if(consistentCount===0) breakdown.push({text:'No set-consistency bonus (need stddev <1.5 across 3+ sets)',pts:0,running:runningScore});
-  if(dropoffCount===0) breakdown.push({text:'No rep drop-off penalties',pts:0,running:runningScore});
+  // Show 0-point rows ONLY for bonus categories the user could have earned but didn't.
+  // Penalties (drop-off) are only shown when they FIRE — absence of a penalty is not a missed opportunity.
+  if(overloadCount===0) breakdown.push({text:'No weight increase on any exercise (potential +0.4 each)',pts:0,running:runningScore});
+  if(repOverloadCount===0) breakdown.push({text:'No rep increase at same/higher weight (potential +0.2 each)',pts:0,running:runningScore});
+  if(consistentCount===0) breakdown.push({text:'No set-consistency bonus (need stddev <1.5 across 3+ sets, +0.2 each)',pts:0,running:runningScore});
 
   // Exercise count bonus
   if(totalEx>=4) {
@@ -9388,9 +9387,10 @@ function renderTrainingMap() {
       'Other':['Forearms','Unknown']
     };
     // Short labels so all 10 region tiles fit on one line even on a phone.
+    // Full region names — tiles use small font so long names still fit.
     const REGION_SHORT = {
-      'Chest':'Chest','Shoulders':'Shldrs','Back':'Back','Biceps':'Biceps','Triceps':'Triceps',
-      'Quads':'Quads','Glutes & Hips':'Glutes','Hamstrings':'Hams','Calves':'Calves','Core':'Core'
+      'Chest':'Chest','Shoulders':'Shoulders','Back':'Back','Biceps':'Biceps','Triceps':'Triceps',
+      'Quads':'Quads','Glutes & Hips':'Glutes & Hips','Hamstrings':'Hamstrings','Calves':'Calves','Core':'Core'
     };
 
     // === 1. Not-trained callout first so the user sees gaps immediately. ===
@@ -9424,7 +9424,7 @@ function renderTrainingMap() {
       h += '</div>';
     });
     h += '</div>';
-    h += '<div style="font-size:.62rem;color:var(--text2);margin:-10px 0 12px 0;text-align:center;">Average sets/week per muscle head. Hover a tile for the full region name.</div>';
+    h += '<div style="font-size:.62rem;color:var(--text2);margin:-10px 0 12px 0;text-align:center;">Average sets/week per muscle head.</div>';
 
     Object.entries(regions).forEach(([region, muscleNames]) => {
       const regionMuscles = muscleNames.filter(m=>muscles[m]).map(m=>({name:m,...muscles[m],exercises:Array.from(muscles[m].exercises)}));
@@ -9435,24 +9435,14 @@ function renderTrainingMap() {
         const weeklyAvg = m.sets/weekDiv;
         const st = m.type==='primary' ? statusFor(weeklyAvg) : STATUS.good;
         const pct = Math.min(100, (weeklyAvg/BAR_SCALE)*100);
-        // Build hover tooltip showing direct and indirect exercises + sets.
+        // Build click-to-expand detail showing direct and indirect exercises + sets.
         const directEntries = Object.entries(m.directEx||{}).sort((a,b)=>b[1]-a[1]);
         const indirectEntries = Object.entries(m.indirectEx||{}).sort((a,b)=>b[1]-a[1]);
         const directTotal = directEntries.reduce((s,e)=>s+e[1],0);
         const indirectTotal = indirectEntries.reduce((s,e)=>s+e[1],0);
-        let tipBody = '<strong>'+m.name+'</strong> — '+m.sets+' total sets'+(weekDiv>1?' (~'+weeklyAvg.toFixed(1)+'/wk)':'');
-        if(directEntries.length) {
-          tipBody += '<div class="tip-section"><strong>Direct ('+directTotal+' sets):</strong>';
-          directEntries.forEach(([ex,s]) => { tipBody += '<div class="ex-row"><span>'+escapeHtml(ex)+'</span><span class="ex-sets">'+s+'</span></div>'; });
-          tipBody += '</div>';
-        }
-        if(indirectEntries.length) {
-          tipBody += '<div class="tip-section"><strong>Indirect ('+indirectTotal+' sets at 50%):</strong>';
-          indirectEntries.forEach(([ex,s]) => { tipBody += '<div class="ex-row"><span>'+escapeHtml(ex)+'</span><span class="ex-sets">'+s+'</span></div>'; });
-          tipBody += '</div>';
-        }
-        h += '<div class="hover-tip" tabindex="0" style="margin-bottom:6px;">';
-        h += '<span class="info-body">'+tipBody+'</span>';
+        const hasDetail = directEntries.length || indirectEntries.length;
+
+        h += '<div style="margin-bottom:6px;">';
         h += '<div style="display:flex;justify-content:space-between;align-items:center;font-size:.78rem;margin-bottom:2px;gap:6px;flex-wrap:wrap;">';
         h += '<span style="flex:1;min-width:0;">'+m.name+' <span style="font-size:.62rem;font-weight:700;color:'+st.color+';padding:1px 5px;border-radius:3px;background:'+st.bg+';">'+st.label+'</span></span>';
         h += '<span style="color:var(--text2);font-size:.72rem;">'+m.sets+' sets'+(weekDiv>1?' (~'+weeklyAvg.toFixed(1)+'/wk)':'')+'</span>';
@@ -9463,7 +9453,22 @@ function renderTrainingMap() {
         h += '<div style="position:absolute;top:0;bottom:0;left:'+bandStart+'%;width:'+(bandEnd-bandStart)+'%;background:rgba(46,204,113,.08);border-left:1px dashed rgba(46,204,113,.35);border-right:1px dashed rgba(46,204,113,.35);"></div>';
         h += '<div style="height:100%;width:'+pct+'%;background:'+st.color+';border-radius:6px;"></div>';
         h += '</div>';
-        h += '<div style="font-size:.62rem;color:var(--text2);margin-top:1px;">'+m.exercises.join(', ')+'</div>';
+        // Click-to-expand exercise detail (replaces hover tooltip).
+        if(hasDetail) {
+          h += '<details style="margin-top:2px;"><summary style="cursor:pointer;font-size:.62rem;color:var(--highlight);font-weight:600;list-style:none;user-select:none;">'+m.exercises.size+' exercises — click for breakdown ▸</summary>';
+          h += '<div style="padding:6px 8px;margin-top:3px;background:var(--card2);border-radius:6px;font-size:.7rem;">';
+          if(directEntries.length) {
+            h += '<div style="font-weight:700;color:var(--green);margin-bottom:3px;">Direct ('+directTotal+' sets)</div>';
+            directEntries.forEach(([ex,s]) => { h += '<div style="display:flex;justify-content:space-between;padding:1px 0;"><span>'+escapeHtml(ex)+'</span><span style="font-weight:700;color:var(--highlight2);">'+s+' sets</span></div>'; });
+          }
+          if(indirectEntries.length) {
+            h += '<div style="font-weight:700;color:var(--highlight);margin-top:6px;margin-bottom:3px;">Indirect ('+indirectTotal+' sets at 50%)</div>';
+            indirectEntries.forEach(([ex,s]) => { h += '<div style="display:flex;justify-content:space-between;padding:1px 0;"><span>'+escapeHtml(ex)+'</span><span style="font-weight:700;color:var(--highlight);">'+s+' sets</span></div>'; });
+          }
+          h += '</div></details>';
+        } else {
+          h += '<div style="font-size:.62rem;color:var(--text2);margin-top:1px;">'+Array.from(m.exercises).join(', ')+'</div>';
+        }
         h += '</div>';
       });
       h += '</div>';
