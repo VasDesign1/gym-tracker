@@ -7382,7 +7382,7 @@ function gradeSession(workout) {
   let runningScore = 6;
   breakdown.push({text:'Base score',pts:6,running:6});
 
-  let overloadCount=0, dropoffCount=0, topRangeCount=0, totalEx=0, consistentCount=0, repOverloadCount=0, exWithPrev=0;
+  let overloadCount=0, dropoffCount=0, topRangeCount=0, totalEx=0, consistentCount=0, repOverloadCount=0, exWithPrev=0, notEarnedPts=0;
   exercises.forEach(ex => {
     const name = resolveExerciseName(ex.name);
     const ws = getWorkingSetsFromExercise(ex);
@@ -7395,19 +7395,20 @@ function gradeSession(workout) {
     const exPts = [];
 
     // Progressive overload (weight)
+    let gotWeight=false, gotReps=false;
     if(prev) {
       exWithPrev++;
       const curMax = Math.max(...ws.map(s=>s.kg*mult));
       const prevMax = prev.maxKg*prev.mult;
       if(curMax>prevMax) {
-        overloadCount++; score+=0.4; runningScore+=0.4;
+        gotWeight=true; overloadCount++; score+=0.4; runningScore+=0.4;
         exPts.push('+0.4 weight increase ('+prev.maxKg+'kg -> '+Math.max(...ws.map(s=>s.kg))+'kg)');
         breakdown.push({text:name+': weight increase ('+prev.maxKg+' -> '+Math.max(...ws.map(s=>s.kg))+'kg)',pts:0.4,running:Math.round(runningScore*10)/10});
       }
       // Rep overload (same or higher weight + more reps)
       const curReps = Math.max(...ws.map(s=>s.reps));
       if(curMax>=prevMax && curReps>prev.maxReps) {
-        repOverloadCount++; score+=0.2; runningScore+=0.2;
+        gotReps=true; repOverloadCount++; score+=0.2; runningScore+=0.2;
         exPts.push('+0.2 rep increase ('+prev.maxReps+' -> '+curReps+' reps)');
         breakdown.push({text:name+': rep increase ('+prev.maxReps+' -> '+curReps+')',pts:0.2,running:Math.round(runningScore*10)/10});
       }
@@ -7434,12 +7435,18 @@ function gradeSession(workout) {
     }
 
     // Set consistency bonus
+    let gotConsistency=false;
     const rv = stddev(ws.map(s=>s.reps));
     if(rv<1.5 && ws.length>=3) {
-      consistentCount++; score+=0.2; runningScore+=0.2;
+      gotConsistency=true; consistentCount++; score+=0.2; runningScore+=0.2;
       exPts.push('+0.2 consistent reps across sets (variance: '+rv.toFixed(1)+')');
       breakdown.push({text:name+': consistent reps (variance: '+rv.toFixed(1)+')',pts:0.2,running:Math.round(runningScore*10)/10});
     }
+
+    // Show exactly what this exercise did NOT earn (so every point is accounted for).
+    if(prev && !gotWeight) { notEarnedPts+=0.4; breakdown.push({text:name+': no weight increase',pts:'not earned +0.4',running:''}); }
+    if(prev && !gotReps) { notEarnedPts+=0.2; breakdown.push({text:name+': no rep increase',pts:'not earned +0.2',running:''}); }
+    if(!gotConsistency) { notEarnedPts+=0.2; breakdown.push({text:name+': no consistency bonus'+(ws.length<3?' (need 3+ sets)':' (variance: '+rv.toFixed(1)+')'),pts:'not earned +0.2',running:''}); }
 
     if(!exPts.length) exPts.push('No change vs previous session');
     exBreakdowns.push({name, pts:exPts, sets:ws.map(s=>s.kg+'kg x '+s.reps)});
@@ -7449,28 +7456,31 @@ function gradeSession(workout) {
   if(totalEx>=4) {
     score+=0.3; runningScore+=0.3;
     breakdown.push({text:'4+ exercises in session',pts:0.3,running:Math.round(runningScore*10)/10});
+  } else {
+    notEarnedPts+=0.3;
+    breakdown.push({text:'Fewer than 4 exercises',pts:'not earned +0.3',running:''});
   }
   if(totalEx>=6) {
     score+=0.2; runningScore+=0.2;
     breakdown.push({text:'6+ exercises — high volume bonus',pts:0.2,running:Math.round(runningScore*10)/10});
+  } else {
+    notEarnedPts+=0.2;
+    breakdown.push({text:'Fewer than 6 exercises',pts:'not earned +0.2',running:''});
   }
 
   // Peloton bonus
   if(workout.peloton && workout.peloton.watts) {
     score+=0.3; runningScore+=0.3;
     breakdown.push({text:'Included cardio/Peloton ('+workout.peloton.watts+'W)',pts:0.3,running:Math.round(runningScore*10)/10});
+  } else {
+    notEarnedPts+=0.3;
+    breakdown.push({text:'No Peloton/cardio',pts:'not earned +0.3',running:''});
   }
 
-  // Simple gap note — states the gap and what each action is worth. No totals to confuse.
-  const gap = Math.round((10 - Math.min(runningScore, 10)) * 10) / 10;
-  if(gap > 0) {
-    let tipText = 'GAP TO 10: '+gap+' pts. Each exercise where you increase weight = +0.4, increase reps = +0.2, keep consistent sets = +0.2.';
-    if(!(workout.peloton && workout.peloton.watts)) tipText += ' Adding Peloton = +0.3.';
-    if(totalEx<4) tipText += ' Doing 4+ exercises = +0.3.';
-    tipText += ' Score caps at 10.';
-    breakdown.push({text:'', pts:'', running:''});
-    breakdown.push({text:tipText, pts:'', running:''});
-  }
+  // Summary: earned + not earned = theoretical max. Score caps at 10.
+  const theoretical = Math.round((runningScore + notEarnedPts)*10)/10;
+  breakdown.push({text:'', pts:'', running:''});
+  breakdown.push({text:'EARNED: '+Math.round(runningScore*10)/10+' · NOT EARNED: '+Math.round(notEarnedPts*10)/10+' · THEORETICAL MAX: '+theoretical+' (capped at 10)', pts:'', running:''});
 
   if(overloadCount>0) details.unshift('Progressive overload achieved on '+overloadCount+' exercise(s).');
 
@@ -7847,11 +7857,13 @@ function buildGradePopupHTML(grade, title) {
   (grade.breakdown||[]).forEach(b => {
     let ptsStr, ptsColor;
     if(b.text==='' && b.pts==='' && b.running==='') return; // spacer row
-    if(b.text.startsWith('GAP TO 10:')) {
-      html += '<tr><td colspan="3" style="padding-top:10px;font-size:.78rem;color:var(--blue);border-top:2px solid var(--border);font-style:italic;">'+b.text+'</td></tr>';
+    if(b.text.startsWith('EARNED:')) {
+      html += '<tr><td colspan="3" style="padding-top:10px;font-size:.72rem;color:var(--blue);border-top:2px solid var(--border);font-style:italic;">'+b.text+'</td></tr>';
       return;
     }
-    if(typeof b.pts==='number') {
+    if(typeof b.pts==='string' && b.pts.startsWith('not earned')) {
+      ptsColor = 'var(--orange)'; ptsStr = b.pts;
+    } else if(typeof b.pts==='number') {
       ptsColor = b.pts>0?'var(--green)':b.pts<0?'#e74c3c':'var(--text)';
       ptsStr = (b.pts>0&&!isMetric?'+':'') + (Number.isInteger(b.pts)?b.pts:b.pts.toFixed(1));
     } else {
@@ -10079,13 +10091,14 @@ window.coachAnalyzeSession = function(dateStr) {
     grade.breakdown.forEach(b => {
       // Handle special rows: section headers, spacers, and string pts ("How to reach 10" items).
       if(b.text==='' && b.pts==='' && b.running==='') return;
-      if(b.text.startsWith('GAP TO 10:')) {
-        html += '<tr><td colspan="3" style="padding-top:10px;font-size:.82rem;color:var(--blue);border-top:2px solid var(--border);font-style:italic;">'+b.text+'</td></tr>';
+      if(b.text.startsWith('EARNED:')) {
+        html += '<tr><td colspan="3" style="padding-top:10px;font-size:.74rem;color:var(--blue);border-top:2px solid var(--border);font-style:italic;">'+b.text+'</td></tr>';
         return;
       }
+      const isNotEarned = typeof b.pts==='string' && b.pts.startsWith('not earned');
       const ptsNum = typeof b.pts==='number' ? b.pts : 0;
-      const ptsColor = ptsNum>0?'var(--green)':ptsNum<0?'#e74c3c':'var(--text)';
-      const ptsDisplay = typeof b.pts==='number' ? ((b.pts>0?'+':'')+(Number.isInteger(b.pts)?b.pts:b.pts.toFixed(1))) : (b.pts||'');
+      const ptsColor = isNotEarned?'var(--orange)':(ptsNum>0?'var(--green)':ptsNum<0?'#e74c3c':'var(--text)');
+      const ptsDisplay = typeof b.pts==='string' ? b.pts : ((b.pts>0?'+':'')+(Number.isInteger(b.pts)?b.pts:b.pts.toFixed(1)));
       const runDisplay = (b.running===''||b.running==null) ? '' : (typeof b.running==='number'?(Number.isInteger(b.running)?b.running:b.running.toFixed(1)):b.running);
       html += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);"><td style="padding:4px 6px;">'+b.text+'</td><td style="text-align:right;padding:4px 6px;color:'+ptsColor+';font-weight:700;">'+ptsDisplay+'</td><td style="text-align:right;padding:4px 6px;color:var(--text2);">'+runDisplay+'</td></tr>';
     });
