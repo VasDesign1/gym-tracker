@@ -9167,18 +9167,21 @@ function renderTrainingMap() {
     h += '<span style="color:var(--text2);font-size:.66rem;">(0 · 1–3 · 4–11 · 12+)</span>';
     h += '</div>';
 
+    // Each region now includes BOTH the specific head names AND any generic aliases used in
+    // MUSCLE_MAP secondaries, so compound-exercise indirect contributions appear in the correct region.
+    // E.g. bench press secondary lists "Triceps" (generic) → now captured by the Triceps region.
     const regions = {
-      'Chest':['Upper Chest','Mid Chest','Lower Chest','Inner Chest'],
+      'Chest':['Upper Chest','Mid Chest','Lower Chest','Inner Chest','Lower Chest'],
       'Shoulders':['Front Delts','Side Delts','Rear Delts','External Rotators'],
-      'Back':['Lats','Rhomboids','Upper Traps','Mid Traps','Lower Traps','Erectors','Teres Major','Levator Scapulae'],
-      'Biceps':['Biceps (Long Head)','Biceps (Short Head)','Brachialis','Brachioradialis'],
-      'Triceps':['Triceps (Long Head)','Triceps (Lateral Head)','Triceps (Medial Head)'],
-      'Quads':['Quads (Rectus Femoris)','Quads (Vastus)'],
+      'Back':['Lats','Rhomboids','Upper Traps','Mid Traps','Lower Traps','Erectors','Teres Major','Levator Scapulae','Traps'],
+      'Biceps':['Biceps (Long Head)','Biceps (Short Head)','Brachialis','Brachioradialis','Biceps'],
+      'Triceps':['Triceps (Long Head)','Triceps (Lateral Head)','Triceps (Medial Head)','Triceps','Triceps Long Head'],
+      'Quads':['Quads (Rectus Femoris)','Quads (Vastus)','Quads'],
       'Glutes & Hips':['Glutes','Glute Medius','Adductors (Inner Thigh)','Abductors (Outer Thigh)','Hip Flexors'],
       'Hamstrings':['Hamstrings'],
       'Calves':['Gastrocnemius','Soleus','Calves'],
-      'Core':['Rectus Abs','Rectus Abs (Upper)','Lower Abs','Transverse Abs','Obliques','Serratus'],
-      'Other':['Forearms','Core','Unknown']
+      'Core':['Rectus Abs','Rectus Abs (Upper)','Lower Abs','Transverse Abs','Obliques','Serratus','Core'],
+      'Other':['Forearms','Unknown']
     };
     // Short labels so all 10 region tiles fit on one line even on a phone.
     const REGION_SHORT = {
@@ -9188,7 +9191,10 @@ function renderTrainingMap() {
 
     // === 1. Not-trained callout first so the user sees gaps immediately. ===
     const allPossible = Object.values(regions).flat();
-    const skipped = allPossible.filter(m=>!muscles[m]&&!['Unknown','Core','Forearms','Calves','Serratus','Levator Scapulae','External Rotators','Teres Major','Hip Flexors'].includes(m));
+    // Exclude generic aliases ('Triceps','Biceps','Triceps Long Head','Core','Traps','Quads') plus
+    // minor muscles from the "skipped" callout — they are captured via specific head names already.
+    const SKIP_EXCLUDE = new Set(['Unknown','Core','Forearms','Calves','Serratus','Levator Scapulae','External Rotators','Teres Major','Hip Flexors','Triceps','Triceps Long Head','Biceps','Traps','Quads','Lower Chest']);
+    const skipped = allPossible.filter(m=>!muscles[m]&&!SKIP_EXCLUDE.has(m));
     if(skipped.length) {
       h += '<div style="margin-bottom:12px;padding:10px 12px;background:rgba(127,140,141,.12);border:1px dashed #7f8c8d;border-radius:6px;">';
       h += '<div style="font-weight:700;font-size:.82rem;color:#bdc3c7;margin-bottom:4px;">⚠ Not Trained ('+skipped.length+' muscles)</div>';
@@ -9258,7 +9264,7 @@ function renderTrainingMap() {
   html += '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">';
   html += '<div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:3px;">Time Range</label>';
   html += '<select id="tmap-range" onchange="updateTrainingMap()" style="min-width:130px;">';
-  html += '<option value="1">Today</option><option value="7" selected>This Week (Mon-Sun)</option><option value="14">Last 2 Weeks (Mon-Sun)</option><option value="30">Last 30 Days</option><option value="90">Last 90 Days</option><option value="0">All Time</option>';
+  html += '<option value="1">Today</option><option value="7" selected>This Week (Mon-Sun)</option><option value="7prev">Last Week (Mon-Sun)</option><option value="14">Last 2 Weeks (Mon-Sun)</option><option value="30">Last 30 Days</option><option value="90">Last 90 Days</option><option value="0">All Time</option>';
   html += '</select></div>';
   html += '<div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:3px;">Filter Muscle</label>';
   html += '<select id="tmap-muscle" onchange="updateTrainingMap()" style="min-width:130px;">';
@@ -9308,7 +9314,9 @@ function _doUpdateTrainingMap() {
 
   const rangeSel = document.getElementById('tmap-range');
   const muscleSel = document.getElementById('tmap-muscle');
-  const days = rangeSel ? parseInt(rangeSel.value)||0 : 7;
+  const rawRange = rangeSel ? rangeSel.value : '7';
+  const isPrevWeek = rawRange === '7prev';
+  const days = isPrevWeek ? 7 : (parseInt(rawRange)||0);
   const muscleFilterRaw = muscleSel ? muscleSel.value : '';
 
   // Resolve group: prefix to array of muscles
@@ -9391,14 +9399,25 @@ function _doUpdateTrainingMap() {
 
   // Get filtered workouts
   // "This Week" (7) and "Last 2 Weeks" (14) are Monday-aligned calendar weeks.
+  // "Last Week" (7prev) is the Mon-Sun that ended before the current week started.
   // 30/90 stay rolling.
   let filtered;
   let gridStart = null; // for the day grid below
   let gridDays = days;
-  if(days===1) {
+  if(days===1 && !isPrevWeek) {
     filtered = c.workouts.filter(w=>w.date===todayStr());
   } else if(days===0) {
     filtered = c.workouts;
+  } else if(isPrevWeek) {
+    // Previous Monday-to-Sunday (the week that just ended).
+    const thisMonStart = getMondayWeekStart(new Date());
+    const prevMon = new Date(thisMonStart); prevMon.setDate(prevMon.getDate()-7);
+    const prevSun = new Date(thisMonStart); prevSun.setDate(prevSun.getDate()-1);
+    const prevMonStr = formatDate(prevMon);
+    const prevSunStr = formatDate(prevSun);
+    filtered = c.workouts.filter(w => w.date >= prevMonStr && w.date <= prevSunStr);
+    gridStart = prevMon;
+    gridDays = 7;
   } else if(days===7) {
     const monStart = getMondayWeekStart(new Date());
     const sunEnd = new Date(monStart); sunEnd.setDate(sunEnd.getDate()+6);
@@ -9420,8 +9439,8 @@ function _doUpdateTrainingMap() {
     filtered = getRecentWorkouts(days);
   }
 
-  const rangeLabel = days===1?'Today':days===7?'This Week (Mon-Sun)':days===14?'Last 2 Weeks (Mon-Sun)':days===0?'All Time':'Last '+days+' Days';
-  const weekDiv = days===1?1:days===0?Math.max(1,daysBetween(c.workouts[0]?.date||todayStr(),todayStr())/7):Math.max(1,days/7);
+  const rangeLabel = isPrevWeek?'Last Week (Mon-Sun)':days===1?'Today':days===7?'This Week (Mon-Sun)':days===14?'Last 2 Weeks (Mon-Sun)':days===0?'All Time':'Last '+days+' Days';
+  const weekDiv = isPrevWeek?1:days===1?1:days===0?Math.max(1,daysBetween(c.workouts[0]?.date||todayStr(),todayStr())/7):Math.max(1,days/7);
 
   let html = '';
 
