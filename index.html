@@ -10116,8 +10116,18 @@ window.coachAnalyzeSession = function(dateStr) {
     html += '<table style="width:100%;border-collapse:collapse;font-size:.82rem;">';
     html += '<tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:4px 6px;color:var(--text2);">Item</th><th style="text-align:right;padding:4px 6px;color:var(--text2);width:55px;">Points</th><th style="text-align:right;padding:4px 6px;color:var(--text2);width:65px;">Running</th></tr>';
     grade.breakdown.forEach(b => {
-      const ptsColor = b.pts>0?'var(--green)':b.pts<0?'#e74c3c':'var(--text)';
-      html += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);"><td style="padding:4px 6px;">'+b.text+'</td><td style="text-align:right;padding:4px 6px;color:'+ptsColor+';font-weight:700;">'+(b.pts>0?'+':'')+b.pts.toFixed(1)+'</td><td style="text-align:right;padding:4px 6px;color:var(--text2);">'+b.running+'</td></tr>';
+      // Handle special rows: section headers, spacers, and string pts ("How to reach 10" items).
+      if(b.text==='' && b.pts==='' && b.running==='') return;
+      if(b.text==='HOW TO REACH 10/10') {
+        html += '<tr><td colspan="3" style="padding-top:10px;font-weight:700;font-size:.82rem;color:var(--blue);border-top:2px solid var(--border);">'+b.text+'</td></tr>';
+        return;
+      }
+      const isStr = typeof b.pts==='string';
+      const isAction = isStr && b.pts.startsWith('+');
+      const ptsColor = isAction?'var(--blue)':isStr?'var(--text2)':(b.pts>0?'var(--green)':b.pts<0?'#e74c3c':'var(--text)');
+      const ptsDisplay = isStr ? b.pts : ((b.pts>0?'+':'')+(Number.isInteger(b.pts)?b.pts:b.pts.toFixed(1)));
+      const runDisplay = (b.running===''||b.running==null) ? '' : (typeof b.running==='number'?(Number.isInteger(b.running)?b.running:b.running.toFixed(1)):b.running);
+      html += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);"><td style="padding:4px 6px;">'+b.text+'</td><td style="text-align:right;padding:4px 6px;color:'+ptsColor+';font-weight:700;">'+ptsDisplay+'</td><td style="text-align:right;padding:4px 6px;color:var(--text2);">'+runDisplay+'</td></tr>';
     });
     html += '<tr style="border-top:2px solid var(--border);"><td style="padding:6px;font-weight:700;color:var(--highlight2);">Final Score</td><td colspan="2" style="text-align:right;padding:6px;font-weight:800;font-size:1rem;color:var(--highlight2);">'+grade.score+' / 10</td></tr>';
     html += '</table>';
