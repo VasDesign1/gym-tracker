@@ -553,8 +553,9 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 .info-tip:hover{background:var(--highlight);color:#fff;border-color:var(--highlight);}
 /* Generic hover wrapper used by elements like volume bar sections to show a tooltip on hover. */
 .hover-tip{position:relative;cursor:help;}
-/* When hovered, elevate above all sibling bars so the fixed tooltip isn't trapped behind them. */
+/* When hovered, elevate above all sibling elements so the fixed tooltip isn't trapped behind them. */
 .hover-tip:hover,.hover-tip:focus,.hover-tip:focus-within{z-index:600;}
+.coach-bar-container:has(.hover-tip:hover),.coach-bar-container:has(.hover-tip:focus){z-index:600;}
 /* Shared tooltip body: fixed-positioned, centered in viewport so it's always fully readable on any screen size. */
 .info-tip > .info-body,
 .hover-tip > .info-body{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(380px,92vw);max-height:80vh;overflow-y:auto;background:var(--card);border:2px solid var(--highlight);border-radius:10px;padding:14px 16px;font-size:.78rem;font-weight:400;color:var(--text);text-align:left;line-height:1.5;z-index:500;box-shadow:0 20px 60px rgba(0,0,0,.85);white-space:normal;pointer-events:none;}
@@ -7444,38 +7445,44 @@ function gradeSession(workout) {
     exBreakdowns.push({name, pts:exPts, sets:ws.map(s=>s.kg+'kg x '+s.reps)});
   });
 
-  // Show missed-point rows with actual TOTALS so the user sees exactly where the gap to 10 comes from.
-  let missedPts = 0;
-  const missedWeight = (exWithPrev - overloadCount) * 0.4;
-  const missedReps = (exWithPrev - repOverloadCount) * 0.2;
-  const missedConsistency = (totalEx - consistentCount) * 0.2;
-  if(missedWeight > 0) breakdown.push({text:(exWithPrev-overloadCount)+' of '+exWithPrev+' exercises had no weight increase',pts:'missed +'+missedWeight.toFixed(1),running:runningScore});
-  if(missedReps > 0) breakdown.push({text:(exWithPrev-repOverloadCount)+' of '+exWithPrev+' exercises had no rep increase',pts:'missed +'+missedReps.toFixed(1),running:runningScore});
-  if(missedConsistency > 0) breakdown.push({text:(totalEx-consistentCount)+' of '+totalEx+' exercises missed consistency bonus',pts:'missed +'+missedConsistency.toFixed(1),running:runningScore});
-
   // Exercise count bonus
   if(totalEx>=4) {
     score+=0.3; runningScore+=0.3;
     breakdown.push({text:'4+ exercises in session',pts:0.3,running:Math.round(runningScore*10)/10});
-  } else {
-    missedPts+=0.3;
-    breakdown.push({text:'Fewer than 4 exercises — no volume bonus',pts:'missed +0.3',running:runningScore});
   }
   if(totalEx>=6) {
     score+=0.2; runningScore+=0.2;
     breakdown.push({text:'6+ exercises — high volume bonus',pts:0.2,running:Math.round(runningScore*10)/10});
-  } else if(totalEx>=4) {
-    missedPts+=0.2;
-    breakdown.push({text:'Fewer than 6 exercises — no extra volume bonus',pts:'missed +0.2',running:runningScore});
   }
 
   // Peloton bonus
   if(workout.peloton && workout.peloton.watts) {
     score+=0.3; runningScore+=0.3;
     breakdown.push({text:'Included cardio/Peloton ('+workout.peloton.watts+'W)',pts:0.3,running:Math.round(runningScore*10)/10});
-  } else {
-    missedPts+=0.3;
-    breakdown.push({text:'No Peloton/cardio in this session',pts:'missed +0.3',running:runningScore});
+  }
+
+  // "How to reach 10" — a clear action plan instead of confusing "missed" totals.
+  // Only shown if score < 10. Lists the quickest ways to close the gap.
+  const gap = Math.round((10 - Math.min(runningScore, 10)) * 10) / 10;
+  const howToReach = [];
+  if(gap > 0) {
+    if(exWithPrev > overloadCount) {
+      const n = exWithPrev - overloadCount;
+      const needed = Math.min(n, Math.ceil(gap / 0.4));
+      howToReach.push({text:'Increase weight on '+needed+' exercise'+(needed>1?'s':''),pts:'+'+Math.round(needed*0.4*10)/10});
+    }
+    if(exWithPrev > repOverloadCount) {
+      const n = exWithPrev - repOverloadCount;
+      const needed = Math.min(n, Math.ceil(gap / 0.2));
+      howToReach.push({text:'Increase reps on '+needed+' exercise'+(needed>1?'s':''),pts:'+'+Math.round(needed*0.2*10)/10});
+    }
+    if(!(workout.peloton && workout.peloton.watts)) howToReach.push({text:'Add Peloton/cardio to session',pts:'+0.3'});
+    if(totalEx<4) howToReach.push({text:'Do 4+ exercises',pts:'+0.3'});
+    else if(totalEx<6) howToReach.push({text:'Do 6+ exercises',pts:'+0.2'});
+    if(totalEx - consistentCount > 0) howToReach.push({text:'Improve set consistency on '+(totalEx-consistentCount)+' exercise(s)',pts:'+'+((totalEx-consistentCount)*0.2).toFixed(1)});
+    breakdown.push({text:'', pts:'', running:''});
+    breakdown.push({text:'HOW TO REACH 10/10', pts:'Value', running:''});
+    howToReach.forEach(h => { breakdown.push({text:h.text, pts:h.pts, running:''}); });
   }
 
   if(overloadCount>0) details.unshift('Progressive overload achieved on '+overloadCount+' exercise(s).');
@@ -7851,9 +7858,15 @@ function buildGradePopupHTML(grade, title) {
   html += '<tr><th>Item</th><th>'+(isMetric?'Value':'Pts')+'</th><th>'+(isMetric?'Running':'Total')+'</th></tr>';
   (grade.breakdown||[]).forEach(b => {
     let ptsStr, ptsColor;
-    if(typeof b.pts==='string' && b.pts.startsWith('missed')) {
-      // Missed-opportunity row — show in orange so it's clearly "could have earned".
-      ptsColor = 'var(--orange)';
+    if(b.text==='HOW TO REACH 10/10') {
+      // Section header for the action plan — style as a bold divider row.
+      html += '<tr><td colspan="3" style="padding-top:10px;font-weight:700;font-size:.78rem;color:var(--blue);border-top:2px solid var(--border);">'+b.text+'</td></tr>';
+      return;
+    }
+    if(b.text==='' && b.pts==='' && b.running==='') return; // spacer row
+    if(typeof b.pts==='string' && b.pts.startsWith('+')) {
+      // "How to reach 10" action item — show value in blue.
+      ptsColor = 'var(--blue)';
       ptsStr = b.pts;
     } else if(typeof b.pts==='number') {
       ptsColor = b.pts>0?'var(--green)':b.pts<0?'#e74c3c':'var(--text)';
@@ -9438,7 +9451,18 @@ function renderTrainingMap() {
         const md = muscles[mn];
         const wkAvg = (md.sets/weekDiv).toFixed(1);
         const mSt = md.type==='primary' ? statusFor(md.sets/weekDiv) : STATUS.good;
-        tileTip += '<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:.72rem;border-bottom:1px solid rgba(255,255,255,.05);"><span>'+mn+'</span><span style="color:'+mSt.color+';font-weight:700;">'+wkAvg+'/wk · '+mSt.label+'</span></div>';
+        tileTip += '<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08);">';
+        tileTip += '<div style="display:flex;justify-content:space-between;font-size:.74rem;font-weight:700;"><span>'+mn+'</span><span style="color:'+mSt.color+';">'+wkAvg+'/wk · '+mSt.label+'</span></div>';
+        // Show exercises feeding this muscle.
+        const dEntries = Object.entries(md.directEx||{}).sort((a,b)=>b[1]-a[1]);
+        const iEntries = Object.entries(md.indirectEx||{}).sort((a,b)=>b[1]-a[1]);
+        if(dEntries.length) {
+          dEntries.forEach(([ex,s]) => { tileTip += '<div style="font-size:.66rem;display:flex;justify-content:space-between;padding:0 0 0 8px;color:var(--text2);"><span>'+ex+'</span><span style="color:var(--green);font-weight:600;">'+s+' sets</span></div>'; });
+        }
+        if(iEntries.length) {
+          iEntries.forEach(([ex,s]) => { tileTip += '<div style="font-size:.66rem;display:flex;justify-content:space-between;padding:0 0 0 8px;color:var(--text2);"><span>'+ex+' (indirect)</span><span style="color:var(--highlight);font-weight:600;">'+s+' sets</span></div>'; });
+        }
+        tileTip += '</div>';
       });
       if(!present.length) tileTip += '<div style="color:var(--text2);font-size:.72rem;padding:4px 0;">No muscles trained in this region.</div>';
       h += '<div class="info-tip" tabindex="0" style="width:auto;height:auto;border-radius:5px;margin:0;padding:5px 2px;background:'+st.bg+';border:1px solid '+st.color+';text-align:center;min-width:0;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;">';
