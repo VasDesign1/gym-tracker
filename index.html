@@ -7425,10 +7425,10 @@ function gradeSession(workout) {
       const prevMax = prev.maxKg*prev.mult;
       if(curMax>prevMax) {
         overloadCount++;
-        weightExDetail.push({name, ok:true, note:Math.round(prevMax*10)/10+'kg → '+Math.round(curMax*10)/10+'kg (effective)'});
-        exPts.push('Weight ↑ ('+Math.round(prevMax*10)/10+'→'+Math.round(curMax*10)/10+'kg)');
+        weightExDetail.push({name, ok:true, note:prev.maxKg+'kg → '+Math.max(...ws.map(s=>s.kg))+'kg'});
+        exPts.push('Weight ↑ ('+prev.maxKg+'→'+Math.max(...ws.map(s=>s.kg))+'kg)');
       } else {
-        weightExDetail.push({name, ok:false, note:'stayed at '+Math.round(curMax*10)/10+'kg (effective)'});
+        weightExDetail.push({name, ok:false, note:'stayed at '+Math.max(...ws.map(s=>s.kg))+'kg'});
       }
       // Rep progression
       const curReps = Math.max(...ws.map(s=>s.reps));
