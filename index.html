@@ -7461,19 +7461,15 @@ function gradeSession(workout) {
     breakdown.push({text:'Included cardio/Peloton ('+workout.peloton.watts+'W)',pts:0.3,running:Math.round(runningScore*10)/10});
   }
 
-  // "How to improve" — a simple note explaining the gap and the fastest way to close it.
+  // Simple gap note — states the gap and what each action is worth. No totals to confuse.
   const gap = Math.round((10 - Math.min(runningScore, 10)) * 10) / 10;
   if(gap > 0) {
-    const tips = [];
-    const weightNeeded = Math.min(exWithPrev - overloadCount, Math.ceil(gap / 0.4));
-    if(weightNeeded > 0) tips.push('increase weight on '+weightNeeded+'+ exercise'+(weightNeeded>1?'s':'')+' (+0.4 each)');
-    if(!(workout.peloton && workout.peloton.watts)) tips.push('add Peloton/cardio (+0.3)');
-    if(totalEx<4) tips.push('do 4+ exercises (+0.3)');
-    else if(totalEx<6) tips.push('do 6+ exercises (+0.2)');
-    if(exWithPrev > repOverloadCount) tips.push('increase reps on more exercises (+0.2 each)');
-    if(totalEx - consistentCount > 0) tips.push('keep reps more consistent across sets (+0.2 each)');
+    let tipText = 'GAP TO 10: '+gap+' pts. Each exercise where you increase weight = +0.4, increase reps = +0.2, keep consistent sets = +0.2.';
+    if(!(workout.peloton && workout.peloton.watts)) tipText += ' Adding Peloton = +0.3.';
+    if(totalEx<4) tipText += ' Doing 4+ exercises = +0.3.';
+    tipText += ' Score caps at 10.';
     breakdown.push({text:'', pts:'', running:''});
-    breakdown.push({text:'GAP TO 10: '+gap+' pts. Fastest path: '+tips.slice(0,2).join(', ')+'.', pts:'', running:''});
+    breakdown.push({text:tipText, pts:'', running:''});
   }
 
   if(overloadCount>0) details.unshift('Progressive overload achieved on '+overloadCount+' exercise(s).');
