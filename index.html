@@ -7421,18 +7421,21 @@ function gradeSession(workout) {
     // Weight progression
     if(prev) {
       exWithPrev++;
-      const curMax = Math.max(...ws.map(s=>s.kg*mult));
-      const prevMax = prev.maxKg*prev.mult;
-      if(curMax>prevMax) {
+      // Compare RAW weights (what's on the machine). Using effective weights causes
+      // false positives when the weight type changes between sessions (e.g. 23kg → 10kg
+      // showing as an increase because mult changed).
+      const curRawMax = Math.max(...ws.map(s=>s.kg));
+      const prevRawMax = prev.maxKg;
+      if(curRawMax>prevRawMax) {
         overloadCount++;
-        weightExDetail.push({name, ok:true, note:prev.maxKg+'kg → '+Math.max(...ws.map(s=>s.kg))+'kg'});
-        exPts.push('Weight ↑ ('+prev.maxKg+'→'+Math.max(...ws.map(s=>s.kg))+'kg)');
+        weightExDetail.push({name, ok:true, note:prevRawMax+'kg → '+curRawMax+'kg'});
+        exPts.push('Weight ↑ ('+prevRawMax+'→'+curRawMax+'kg)');
       } else {
-        weightExDetail.push({name, ok:false, note:'stayed at '+Math.max(...ws.map(s=>s.kg))+'kg'});
+        weightExDetail.push({name, ok:false, note:'stayed at '+curRawMax+'kg'});
       }
       // Rep progression
       const curReps = Math.max(...ws.map(s=>s.reps));
-      if(curMax>=prevMax && curReps>prev.maxReps) {
+      if(curRawMax>=prevRawMax && curReps>prev.maxReps) {
         repOverloadCount++;
         repExDetail.push({name, ok:true, note:prev.maxReps+' → '+curReps+' reps'});
         exPts.push('Reps ↑ ('+prev.maxReps+'→'+curReps+')');
