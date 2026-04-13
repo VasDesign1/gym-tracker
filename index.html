@@ -10105,10 +10105,14 @@ window.coachAnalyzeSession = function(dateStr) {
       return order[classifySet(a)] - order[classifySet(b)];
     });
     html += '<div style="font-size:.82rem;margin-bottom:8px;">';
+    let warmNum=0, workNum=0, finishNum=0;
     sortedSets.forEach(s => {
       const type = classifySet(s);
       const col = type==='warm'?'var(--blue)':type==='finish'?'var(--orange)':'var(--text)';
-      const label = type==='warm'?' (warm)':type==='finish'?' (finisher)':'';
+      let label = '';
+      if(type==='warm') { warmNum++; label = ' (Warm-up '+warmNum+')'; }
+      else if(type==='finish') { finishNum++; label = ' (Finisher '+finishNum+')'; }
+      else { workNum++; label = ' (Set '+workNum+')'; }
       html += '<span style="color:'+col+';margin-right:10px;">'+s.kg+'kg x '+s.reps+label+'</span>';
     });
     html += '</div>';
