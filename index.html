@@ -6847,8 +6847,12 @@ function getNutritionLog() { try { const v=JSON.parse(localStorage.getItem('gym_
 function getBodyweightLog() { try { const v=JSON.parse(localStorage.getItem('gym_bodyweight_log')||'{}'); return (v&&typeof v==='object')?v:{}; } catch(e) { return {}; } }
 function todayStr() { return melbourneDateStr(new Date()); }
 function daysBetween(a,b) { return Math.round((new Date(b)-new Date(a))/86400000); }
-// Hours since noon Melbourne on dateStr — matches how the rest of the app anchors days.
-function hoursSince(dateStr) { return (Date.now() - melbourneWallToUTCms(dateStr, 12, 0, 0)) / 3600000; }
+// Hours since a workout on dateStr. If the workout is TODAY, assume it just happened
+// (anchor at 1h ago) so recovery timers start correctly. For past dates, anchor at noon Melbourne.
+function hoursSince(dateStr) {
+  if(dateStr === todayStr()) return 1;
+  return (Date.now() - melbourneWallToUTCms(dateStr, 12, 0, 0)) / 3600000;
+}
 function clamp(v,lo,hi) { return Math.max(lo,Math.min(hi,v)); }
 function stddev(arr) { if(!arr.length) return 0; const m=arr.reduce((a,b)=>a+b,0)/arr.length; return Math.sqrt(arr.reduce((s,v)=>s+(v-m)*(v-m),0)/arr.length); }
 function avg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
@@ -7421,10 +7425,10 @@ function gradeSession(workout) {
       const prevMax = prev.maxKg*prev.mult;
       if(curMax>prevMax) {
         overloadCount++;
-        weightExDetail.push({name, ok:true, note:prev.maxKg+'kg → '+Math.max(...ws.map(s=>s.kg))+'kg'});
-        exPts.push('Weight ↑ ('+prev.maxKg+'→'+Math.max(...ws.map(s=>s.kg))+'kg)');
+        weightExDetail.push({name, ok:true, note:Math.round(prevMax*10)/10+'kg → '+Math.round(curMax*10)/10+'kg (effective)'});
+        exPts.push('Weight ↑ ('+Math.round(prevMax*10)/10+'→'+Math.round(curMax*10)/10+'kg)');
       } else {
-        weightExDetail.push({name, ok:false, note:'stayed at '+Math.max(...ws.map(s=>s.kg))+'kg'});
+        weightExDetail.push({name, ok:false, note:'stayed at '+Math.round(curMax*10)/10+'kg (effective)'});
       }
       // Rep progression
       const curReps = Math.max(...ws.map(s=>s.reps));
@@ -9369,7 +9373,15 @@ function renderTrainingMap() {
 
   function collectMuscleData(workouts) {
     const muscles = {};
+    // Map generic MUSCLE_MAP names to specific heads so they don't appear as separate rows.
+    // E.g., secondary "Triceps" from shoulder press → "Triceps (Lateral Head)".
+    const GENERIC_TO_SPECIFIC = {
+      'Triceps':'Triceps (Lateral Head)', 'Triceps Long Head':'Triceps (Long Head)',
+      'Biceps':'Biceps (Short Head)', 'Core':'Rectus Abs', 'Traps':'Upper Traps', 'Quads':'Quads (Vastus)'
+    };
+    const normMuscleName = m => GENERIC_TO_SPECIFIC[m] || m;
     const ensureMuscle = (m, type) => {
+      m = normMuscleName(m);
       if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type,directEx:{},indirectEx:{}};
     };
     workouts.forEach(w => {
@@ -9378,13 +9390,15 @@ function renderTrainingMap() {
         const ws = getWorkingSetsFromExercise(ex);
         const setCount = ws.length;
         const info = getMusclesForExercise(name);
-        info.primary.forEach(m => {
+        info.primary.forEach(rawM => {
+          const m = normMuscleName(rawM);
           ensureMuscle(m,'primary');
           muscles[m].sets += setCount;
           muscles[m].exercises.add(name);
           muscles[m].directEx[name] = (muscles[m].directEx[name]||0) + setCount;
         });
-        info.secondary.forEach(m => {
+        info.secondary.forEach(rawM => {
+          const m = normMuscleName(rawM);
           ensureMuscle(m,'secondary');
           const secSets = Math.round(setCount*0.5);
           muscles[m].sets += secSets;
@@ -9446,14 +9460,14 @@ function renderTrainingMap() {
     const regions = {
       'Chest':['Upper Chest','Mid Chest','Lower Chest','Inner Chest','Lower Chest'],
       'Shoulders':['Front Delts','Side Delts','Rear Delts','External Rotators'],
-      'Back':['Lats','Rhomboids','Upper Traps','Mid Traps','Lower Traps','Erectors','Teres Major','Levator Scapulae','Traps'],
-      'Biceps':['Biceps (Long Head)','Biceps (Short Head)','Brachialis','Brachioradialis','Biceps'],
-      'Triceps':['Triceps (Long Head)','Triceps (Lateral Head)','Triceps (Medial Head)','Triceps','Triceps Long Head'],
-      'Quads':['Quads (Rectus Femoris)','Quads (Vastus)','Quads'],
+      'Back':['Lats','Rhomboids','Upper Traps','Mid Traps','Lower Traps','Erectors','Teres Major','Levator Scapulae'],
+      'Biceps':['Biceps (Long Head)','Biceps (Short Head)','Brachialis','Brachioradialis'],
+      'Triceps':['Triceps (Long Head)','Triceps (Lateral Head)','Triceps (Medial Head)'],
+      'Quads':['Quads (Rectus Femoris)','Quads (Vastus)'],
       'Glutes & Hips':['Glutes','Glute Medius','Adductors (Inner Thigh)','Abductors (Outer Thigh)','Hip Flexors'],
       'Hamstrings':['Hamstrings'],
       'Calves':['Gastrocnemius','Soleus','Calves'],
-      'Core':['Rectus Abs','Rectus Abs (Upper)','Lower Abs','Transverse Abs','Obliques','Serratus','Core'],
+      'Core':['Rectus Abs','Rectus Abs (Upper)','Lower Abs','Transverse Abs','Obliques','Serratus'],
       'Other':['Forearms','Unknown']
     };
     // Short labels so all 10 region tiles fit on one line even on a phone.
@@ -10080,11 +10094,22 @@ window.coachAnalyzeSession = function(dateStr) {
     if(stall) html += '<span class="coach-tag yellow">STALLED</span>';
     html += '</div></div>';
 
-    // Sets display
+    // Sets display — always show in order: warmups → working sets → finishers.
+    const classifySet = s => {
+      if(s.key.startsWith('warmup') || (maxKg>0 && s.kg<maxKg*0.55 && allSets.indexOf(s)<allSets.length-1)) return 'warm';
+      if(s.key.startsWith('finisher')) return 'finish';
+      return 'work';
+    };
+    const sortedSets = [...allSets].sort((a,b) => {
+      const order = {warm:0,work:1,finish:2};
+      return order[classifySet(a)] - order[classifySet(b)];
+    });
     html += '<div style="font-size:.82rem;margin-bottom:8px;">';
-    allSets.forEach(s => {
-      const isWarmup = s.key.startsWith('warmup') || (maxKg>0 && s.kg<maxKg*0.55 && allSets.indexOf(s)<2);
-      html += '<span style="color:'+(isWarmup?'var(--blue)':s.key.startsWith('finisher')?'var(--orange)':'var(--text)')+';margin-right:10px;">'+s.kg+'kg x '+s.reps+(isWarmup?' (warm)':'')+'</span>';
+    sortedSets.forEach(s => {
+      const type = classifySet(s);
+      const col = type==='warm'?'var(--blue)':type==='finish'?'var(--orange)':'var(--text)';
+      const label = type==='warm'?' (warm)':type==='finish'?' (finisher)':'';
+      html += '<span style="color:'+col+';margin-right:10px;">'+s.kg+'kg x '+s.reps+label+'</span>';
     });
     html += '</div>';
 
