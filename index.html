@@ -7715,7 +7715,7 @@ function switchCoachPanel(panel) {
   document.querySelectorAll('#coach-subnav .chip').forEach(c=>{c.classList.toggle('selected',c.dataset.panel===panel);});
   const el = document.getElementById('coach-content');
   _coachCache = null; // refresh
-  switch(panel) {
+  try { switch(panel) {
     case 'briefing': el.innerHTML = renderBriefing(); break;
     case 'session': el.innerHTML = renderSessionAnalysis(); break;
     case 'overload': el.innerHTML = renderOverload(); break;
@@ -7732,6 +7732,7 @@ function switchCoachPanel(panel) {
     case 'trainingmap': el.innerHTML = renderTrainingMap(); break;
     default: el.innerHTML = renderBriefing();
   }
+  } catch(err) { el.innerHTML = '<div class="coach-alert danger">Error loading panel: '+err.message+'<br><pre style="font-size:.7rem;color:var(--text2);margin-top:8px;">'+err.stack+'</pre></div>'; console.error('Coach panel error:',err); }
   initCoachCharts(panel);
 }
 
@@ -8164,6 +8165,7 @@ function renderBriefing() {
 }
 
 function renderSessionAnalysis() {
+  try {
   const c = buildCache();
   const filtered = getFilteredWorkouts();
   if(!filtered.length) return '<div class="empty-state"><div class="icon">📊</div><p>No workouts in selected time range. Adjust the time range or log your first workout.</p></div>';
@@ -8185,6 +8187,7 @@ function renderSessionAnalysis() {
     if(recent.length) coachAnalyzeSession(recent[0].date);
   }, 50);
   return html;
+  } catch(err) { return '<div class="coach-alert danger">Error loading session analysis: '+err.message+'</div>'; }
 }
 
 function renderOverload() {
@@ -10013,6 +10016,7 @@ function buildBodyweightChart() {
 
 // ===================== SESSION DETAIL ANALYZER =====================
 window.coachAnalyzeSession = function(dateStr) {
+  try {
   const c = buildCache();
   const workout = c.workouts.find(w=>w.date===dateStr);
   if(!workout) return;
@@ -10145,6 +10149,11 @@ window.coachAnalyzeSession = function(dateStr) {
 
   html += '</div>';
   el.innerHTML = html;
+  } catch(err) {
+    const el = document.getElementById('coach-session-detail');
+    if(el) el.innerHTML = '<div class="coach-alert danger">Error analyzing session: '+err.message+'</div>';
+    console.error('coachAnalyzeSession error:', err);
+  }
 };
 
 // ===================== GLOBAL FUNCTIONS =====================
