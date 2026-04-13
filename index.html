@@ -10095,14 +10095,19 @@ window.coachAnalyzeSession = function(dateStr) {
     html += '</div></div>';
 
     // Sets display — always show in order: warmups → working sets → finishers.
+    // A set is a warmup if its key starts with 'warmup' OR if it was explicitly tagged.
     const classifySet = s => {
-      if(s.key.startsWith('warmup') || (maxKg>0 && s.kg<maxKg*0.55 && allSets.indexOf(s)<allSets.length-1)) return 'warm';
+      if(s.key.startsWith('warmup')) return 'warm';
       if(s.key.startsWith('finisher')) return 'finish';
       return 'work';
     };
     const sortedSets = [...allSets].sort((a,b) => {
       const order = {warm:0,work:1,finish:2};
-      return order[classifySet(a)] - order[classifySet(b)];
+      const diff = order[classifySet(a)] - order[classifySet(b)];
+      if(diff !== 0) return diff;
+      // Within same type, sort warmups by weight ascending (lighter first).
+      if(classifySet(a)==='warm') return a.kg - b.kg;
+      return 0;
     });
     html += '<div style="font-size:.82rem;margin-bottom:8px;">';
     let warmNum=0, workNum=0, finishNum=0;
