@@ -6865,12 +6865,13 @@ function inlineBreakdown(breakdown, maxScore, label) {
   let h = '<div style="margin-top:8px;font-size:.7rem;line-height:1.4;">';
   h += '<div style="font-weight:700;color:var(--text2);margin-bottom:3px;font-size:.68rem;text-transform:uppercase;letter-spacing:.3px;">Scoring breakdown ('+label+', max '+maxScore+')</div>';
   (breakdown||[]).forEach(b => {
-    const pts = typeof b.pts==='number' ? b.pts : 0;
-    const col = pts>0?'var(--green)':pts<0?'#e74c3c':'var(--text2)';
+    const isMissed = typeof b.pts==='string' && b.pts.startsWith('missed');
+    const pts = isMissed ? 0 : (typeof b.pts==='number' ? b.pts : 0);
+    const col = isMissed ? 'var(--orange)' : (pts>0?'var(--green)':pts<0?'#e74c3c':'var(--text2)');
     const sign = pts>0?'+':'';
     h += '<div style="display:flex;justify-content:space-between;gap:6px;padding:1px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
     h += '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+b.text+'</span>';
-    h += '<span style="color:'+col+';font-weight:700;white-space:nowrap;">'+sign+pts+'</span>';
+    h += '<span style="color:'+col+';font-weight:700;white-space:nowrap;">'+(isMissed?b.pts:sign+pts)+'</span>';
     h += '</div>';
   });
   h += '</div>';
@@ -7440,24 +7441,28 @@ function gradeSession(workout) {
     exBreakdowns.push({name, pts:exPts, sets:ws.map(s=>s.kg+'kg x '+s.reps)});
   });
 
-  // Show 0-point rows ONLY for bonus categories the user could have earned but didn't.
-  // Penalties (drop-off) are only shown when they FIRE — absence of a penalty is not a missed opportunity.
-  if(overloadCount===0) breakdown.push({text:'No weight increase on any exercise (potential +0.4 each)',pts:0,running:runningScore});
-  if(repOverloadCount===0) breakdown.push({text:'No rep increase at same/higher weight (potential +0.2 each)',pts:0,running:runningScore});
-  if(consistentCount===0) breakdown.push({text:'No set-consistency bonus (need stddev <1.5 across 3+ sets, +0.2 each)',pts:0,running:runningScore});
+  // Show missed-point rows for bonus categories the user could have earned but didn't.
+  // Use 'missed' string for pts so the popup renderer can show them in orange.
+  let missedPts = 0;
+  const missedItems = [];
+  if(overloadCount===0) { missedPts+=0.4; missedItems.push('weight increase (+0.4/exercise)'); breakdown.push({text:'No weight increase on any exercise',pts:'missed +0.4/ex',running:runningScore}); }
+  if(repOverloadCount===0) { missedPts+=0.2; missedItems.push('rep increase (+0.2/exercise)'); breakdown.push({text:'No rep increase at same/higher weight',pts:'missed +0.2/ex',running:runningScore}); }
+  if(consistentCount===0) { missedPts+=0.2; missedItems.push('set consistency (+0.2/exercise)'); breakdown.push({text:'No set-consistency bonus (need stddev <1.5, 3+ sets)',pts:'missed +0.2/ex',running:runningScore}); }
 
   // Exercise count bonus
   if(totalEx>=4) {
     score+=0.3; runningScore+=0.3;
-    breakdown.push({text:'4+ exercises in session (+0.3)',pts:0.3,running:Math.round(runningScore*10)/10});
+    breakdown.push({text:'4+ exercises in session',pts:0.3,running:Math.round(runningScore*10)/10});
   } else {
-    breakdown.push({text:'Fewer than 4 exercises (no volume bonus)',pts:0,running:runningScore});
+    missedPts+=0.3; missedItems.push('volume bonus (+0.3)');
+    breakdown.push({text:'Fewer than 4 exercises — no volume bonus',pts:'missed +0.3',running:runningScore});
   }
   if(totalEx>=6) {
     score+=0.2; runningScore+=0.2;
-    breakdown.push({text:'6+ exercises — high volume bonus (+0.2)',pts:0.2,running:Math.round(runningScore*10)/10});
+    breakdown.push({text:'6+ exercises — high volume bonus',pts:0.2,running:Math.round(runningScore*10)/10});
   } else if(totalEx>=4) {
-    breakdown.push({text:'Fewer than 6 exercises (no extra volume bonus)',pts:0,running:runningScore});
+    missedPts+=0.2; missedItems.push('high volume bonus (+0.2)');
+    breakdown.push({text:'Fewer than 6 exercises — no extra volume bonus',pts:'missed +0.2',running:runningScore});
   }
 
   // Peloton bonus
@@ -7465,7 +7470,8 @@ function gradeSession(workout) {
     score+=0.3; runningScore+=0.3;
     breakdown.push({text:'Included cardio/Peloton ('+workout.peloton.watts+'W)',pts:0.3,running:Math.round(runningScore*10)/10});
   } else {
-    breakdown.push({text:'No Peloton/cardio in this session',pts:0,running:runningScore});
+    missedPts+=0.3; missedItems.push('Peloton/cardio (+0.3)');
+    breakdown.push({text:'No Peloton/cardio in this session',pts:'missed +0.3',running:runningScore});
   }
 
   if(overloadCount>0) details.unshift('Progressive overload achieved on '+overloadCount+' exercise(s).');
@@ -7841,7 +7847,11 @@ function buildGradePopupHTML(grade, title) {
   html += '<tr><th>Item</th><th>'+(isMetric?'Value':'Pts')+'</th><th>'+(isMetric?'Running':'Total')+'</th></tr>';
   (grade.breakdown||[]).forEach(b => {
     let ptsStr, ptsColor;
-    if(typeof b.pts==='number') {
+    if(typeof b.pts==='string' && b.pts.startsWith('missed')) {
+      // Missed-opportunity row — show in orange so it's clearly "could have earned".
+      ptsColor = 'var(--orange)';
+      ptsStr = b.pts;
+    } else if(typeof b.pts==='number') {
       ptsColor = b.pts>0?'var(--green)':b.pts<0?'#e74c3c':'var(--text)';
       ptsStr = (b.pts>0&&!isMetric?'+':'') + (Number.isInteger(b.pts)?b.pts:b.pts.toFixed(1));
     } else {
@@ -8323,7 +8333,7 @@ function _updateVolumeDashboard() {
     html += '<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap;"><span style="font-weight:600;font-size:.85rem;">'+label+'</span><span style="font-size:.8rem;color:var(--text2);"><strong style="color:var(--text);">'+totalStim+'</strong> total'+perWkNote+' <span style="opacity:.7;">('+direct+' direct'+(indirect>0?' + '+indirect+' indirect':'')+') (target: '+targets.min+'–'+targets.max+')</span></span></div>';
     html += '<div class="coach-bar-container" style="position:relative;overflow:visible;">';
     // Direct bar section
-    html += '<div class="hover-tip coach-bar-fill '+color+'" tabindex="0" style="width:'+directPct+'%;z-index:1;">'+direct;
+    html += '<div class="hover-tip coach-bar-fill '+color+'" tabindex="0" style="width:'+directPct+'%;">'+direct;
     html += '<span class="info-body">'+directTip+'</span>';
     html += '</div>';
     // Indirect bar section — always visible with striped fill and the indirect number inside
@@ -8530,14 +8540,15 @@ function renderRecommendations() {
     const leftRecs = recs.filter(r => positiveTypes.has(r.actionType));
     const rightRecs = recs.filter(r => !positiveTypes.has(r.actionType));
     const renderRecCard = r => {
-      let card = '<div class="coach-alert '+r.type+'" style="margin-bottom:8px;"><div class="alert-title">'+r.title+'</div>'+r.msg;
       if(r.actionType) {
-        card += '<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:.78rem;color:var(--blue);font-weight:700;list-style:none;user-select:none;">Show Options ▸</summary>';
+        // Entire card is a <details> — clicking anywhere on it toggles the options open.
+        let card = '<details class="coach-alert '+r.type+'" style="margin-bottom:8px;cursor:pointer;">';
+        card += '<summary style="list-style:none;user-select:none;"><div class="alert-title" style="display:inline;">'+r.title+'</div> <span style="font-size:.68rem;color:var(--blue);">▸ click for options</span><div style="font-size:.85rem;margin-top:3px;">'+r.msg+'</div></summary>';
         card += buildActionOptions(r.actionType, r.actionData);
         card += '</details>';
+        return card;
       }
-      card += '</div>';
-      return card;
+      return '<div class="coach-alert '+r.type+'" style="margin-bottom:8px;"><div class="alert-title">'+r.title+'</div>'+r.msg+'</div>';
     };
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">';
     html += '<div>';
@@ -9417,7 +9428,10 @@ function renderTrainingMap() {
       const avgWeekly = present.length ? totalWeekly/present.length : 0;
       const st = present.length ? statusFor(avgWeekly) : STATUS.skipped;
       const shortLabel = REGION_SHORT[region] || region;
-      h += '<div title="'+region+'" style="padding:5px 2px;background:'+st.bg+';border:1px solid '+st.color+';border-radius:5px;text-align:center;min-width:0;overflow:hidden;">';
+      // Map region name to the muscle-filter dropdown group value so clicking the tile filters to that region.
+      const regionToFilter = {'Chest':'group:Chest','Shoulders':'group:Shoulders','Back':'group:Back','Biceps':'group:Biceps','Triceps':'group:Triceps','Quads':'group:Legs','Glutes & Hips':'group:Legs','Hamstrings':'group:Legs','Calves':'group:Legs','Core':'group:Core'};
+      const filterVal = regionToFilter[region]||'';
+      h += '<div title="Click to filter: '+region+'" onclick="(function(){var s=document.getElementById(\'tmap-muscle\');if(s){s.value=\''+filterVal+'\';updateTrainingMap();}})()" style="padding:5px 2px;background:'+st.bg+';border:1px solid '+st.color+';border-radius:5px;text-align:center;min-width:0;overflow:hidden;cursor:pointer;">';
       h += '<div style="font-size:.62rem;color:var(--text);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+shortLabel+'</div>';
       h += '<div style="font-size:.95rem;font-weight:800;color:'+st.color+';line-height:1.1;margin-top:1px;">'+avgWeekly.toFixed(1)+'</div>';
       h += '<div style="font-size:.52rem;color:'+st.color+';font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+st.label+'</div>';
