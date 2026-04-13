@@ -6864,17 +6864,21 @@ function infoTip(bodyHtml) {
 
 // Render a compact inline breakdown table from a breakdown array (used by readiness and grade displays).
 // Shows each scoring item with its points and running total, so the user can see the full system at a glance.
+// Compact inline breakdown for cards. Shows each category as "earned / max".
 function inlineBreakdown(breakdown, maxScore, label) {
-  let h = '<div style="margin-top:8px;font-size:.7rem;line-height:1.4;">';
-  h += '<div style="font-weight:700;color:var(--text2);margin-bottom:3px;font-size:.68rem;text-transform:uppercase;letter-spacing:.3px;">Scoring breakdown ('+label+', max '+maxScore+')</div>';
+  let h = '<div style="margin-top:8px;font-size:.68rem;line-height:1.4;">';
+  h += '<div style="font-weight:700;color:var(--text2);margin-bottom:3px;font-size:.66rem;text-transform:uppercase;letter-spacing:.3px;">Scoring ('+label+', max '+maxScore+')</div>';
   (breakdown||[]).forEach(b => {
-    const isMissed = typeof b.pts==='string' && b.pts.startsWith('missed');
-    const pts = isMissed ? 0 : (typeof b.pts==='number' ? b.pts : 0);
-    const col = isMissed ? 'var(--orange)' : (pts>0?'var(--green)':pts<0?'#e74c3c':'var(--text2)');
-    const sign = pts>0?'+':'';
+    const earned = typeof b.pts==='number' ? b.pts : 0;
+    const max = b._max || 0;
+    const full = earned >= max - 0.01 && max > 0;
+    const zero = earned < 0.01 && max > 0;
+    const col = full ? 'var(--green)' : zero ? 'var(--orange)' : 'var(--highlight2)';
+    // Shorten text for inline display.
+    const shortText = b.text.split(' — ')[0] || b.text;
     h += '<div style="display:flex;justify-content:space-between;gap:6px;padding:1px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
-    h += '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+b.text+'</span>';
-    h += '<span style="color:'+col+';font-weight:700;white-space:nowrap;">'+(isMissed?b.pts:sign+pts)+'</span>';
+    h += '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+shortText+'</span>';
+    h += '<span style="color:'+col+';font-weight:700;white-space:nowrap;">'+earned.toFixed(1)+' / '+max.toFixed(1)+'</span>';
     h += '</div>';
   });
   h += '</div>';
@@ -7372,17 +7376,33 @@ function getAllPRs() {
   return prs;
 }
 
+// ── SESSION GRADING — Option A: Fixed Category Pools ──
+// 6 pools that ALWAYS sum to exactly 10.0 regardless of exercise count.
+// Each pool is earned as a proportion (what you achieved / what was possible).
+//
+//   CATEGORY                MAX    HOW EARNED
+//   Base (you showed up)    5.0    Always
+//   Weight Progression      1.0    % of exercises where you increased weight
+//   Rep Progression         0.5    % of exercises where you increased reps
+//   Set Consistency         1.5    % of exercises with low rep variance
+//   Volume                  0.5    0.3 for 4+ exercises, +0.2 for 6+
+//   Peloton / Cardio        0.3    0.3 if Peloton included
+//   Form (no drop-offs)     1.2    Full 1.2 minus proportional drop-off deductions
+//   ─────────────────────  ─────
+//   TOTAL                  10.0
+//
 function gradeSession(workout) {
   const c = buildCache();
-  let score=6;
+  const POOLS = {base:5.0, weight:1.0, reps:0.5, consistency:1.5, volume:0.5, peloton:0.3, form:1.2};
   const details=[], breakdown=[], exBreakdowns=[];
   const exercises = workout.exercises||[];
-  if(!exercises.length) return {score:0,details:['No exercises logged.'],breakdown:['No data'],exBreakdowns:[],overloadCount:0,dropoffCount:0,topRangeCount:0,totalEx:0};
+  if(!exercises.length) return {score:0,details:['No exercises logged.'],breakdown:[{text:'No exercises',pts:0,running:0}],exBreakdowns:[],overloadCount:0,dropoffCount:0,topRangeCount:0,totalEx:0};
 
-  let runningScore = 6;
-  breakdown.push({text:'Base score',pts:6,running:6});
+  // ── Pass 1: scan every exercise and collect per-exercise detail ──
+  let overloadCount=0, dropoffCount=0, steepDropoffs=0, moderateDropoffs=0;
+  let topRangeCount=0, totalEx=0, consistentCount=0, repOverloadCount=0, exWithPrev=0;
+  const weightExDetail=[], repExDetail=[], consistExDetail=[], formExDetail=[];
 
-  let overloadCount=0, dropoffCount=0, topRangeCount=0, totalEx=0, consistentCount=0, repOverloadCount=0, exWithPrev=0, notEarnedPts=0;
   exercises.forEach(ex => {
     const name = resolveExerciseName(ex.name);
     const ws = getWorkingSetsFromExercise(ex);
@@ -7394,103 +7414,105 @@ function gradeSession(workout) {
     const prev = prevSessions.length ? prevSessions[prevSessions.length-1] : null;
     const exPts = [];
 
-    // Progressive overload (weight)
-    let gotWeight=false, gotReps=false;
+    // Weight progression
     if(prev) {
       exWithPrev++;
       const curMax = Math.max(...ws.map(s=>s.kg*mult));
       const prevMax = prev.maxKg*prev.mult;
       if(curMax>prevMax) {
-        gotWeight=true; overloadCount++; score+=0.4; runningScore+=0.4;
-        exPts.push('+0.4 weight increase ('+prev.maxKg+'kg -> '+Math.max(...ws.map(s=>s.kg))+'kg)');
-        breakdown.push({text:name+': weight increase ('+prev.maxKg+' -> '+Math.max(...ws.map(s=>s.kg))+'kg)',pts:0.4,running:Math.round(runningScore*10)/10});
+        overloadCount++;
+        weightExDetail.push({name, ok:true, note:prev.maxKg+'kg → '+Math.max(...ws.map(s=>s.kg))+'kg'});
+        exPts.push('Weight ↑ ('+prev.maxKg+'→'+Math.max(...ws.map(s=>s.kg))+'kg)');
+      } else {
+        weightExDetail.push({name, ok:false, note:'stayed at '+Math.max(...ws.map(s=>s.kg))+'kg'});
       }
-      // Rep overload (same or higher weight + more reps)
+      // Rep progression
       const curReps = Math.max(...ws.map(s=>s.reps));
       if(curMax>=prevMax && curReps>prev.maxReps) {
-        gotReps=true; repOverloadCount++; score+=0.2; runningScore+=0.2;
-        exPts.push('+0.2 rep increase ('+prev.maxReps+' -> '+curReps+' reps)');
-        breakdown.push({text:name+': rep increase ('+prev.maxReps+' -> '+curReps+')',pts:0.2,running:Math.round(runningScore*10)/10});
+        repOverloadCount++;
+        repExDetail.push({name, ok:true, note:prev.maxReps+' → '+curReps+' reps'});
+        exPts.push('Reps ↑ ('+prev.maxReps+'→'+curReps+')');
+      } else {
+        repExDetail.push({name, ok:false, note:'no improvement'});
       }
     }
 
-    // Rep drop-off penalty
+    // Form — drop-off detection
     const dropoff = detectRepDropoff(ws);
     if(dropoff && dropoff.severity==='high') {
-      dropoffCount++; score-=0.5; runningScore-=0.5;
-      exPts.push('-0.5 steep rep drop-off ('+dropoff.pattern+')');
-      breakdown.push({text:name+': steep rep drop-off ('+dropoff.pattern+')',pts:-0.5,running:Math.round(runningScore*10)/10});
+      steepDropoffs++; dropoffCount++;
+      formExDetail.push({name, ok:false, note:'steep drop-off ('+dropoff.pattern+')'});
+      exPts.push('Steep drop-off ('+dropoff.pattern+')');
       details.push(name+': '+dropoff.msg);
     } else if(dropoff && dropoff.severity==='medium') {
-      score-=0.2; runningScore-=0.2;
-      exPts.push('-0.2 moderate rep drop-off ('+dropoff.pattern+')');
-      breakdown.push({text:name+': moderate rep drop-off ('+dropoff.pattern+')',pts:-0.2,running:Math.round(runningScore*10)/10});
+      moderateDropoffs++;
+      formExDetail.push({name, ok:false, note:'moderate drop-off ('+dropoff.pattern+')'});
+      exPts.push('Moderate drop-off');
+    } else {
+      formExDetail.push({name, ok:true, note:'clean sets'});
     }
 
     // Top of range
     if(detectTopOfRange(ws)) {
       topRangeCount++;
-      exPts.push('All sets at 12+ reps - ready to increase weight');
-      details.push(name+': All sets at 12+ reps. Ready to increase weight.');
+      exPts.push('All sets 12+ — ready to increase weight');
+      details.push(name+': Ready to increase weight.');
     }
 
-    // Set consistency bonus
-    let gotConsistency=false;
+    // Set consistency
     const rv = stddev(ws.map(s=>s.reps));
     if(rv<1.5 && ws.length>=3) {
-      gotConsistency=true; consistentCount++; score+=0.2; runningScore+=0.2;
-      exPts.push('+0.2 consistent reps across sets (variance: '+rv.toFixed(1)+')');
-      breakdown.push({text:name+': consistent reps (variance: '+rv.toFixed(1)+')',pts:0.2,running:Math.round(runningScore*10)/10});
+      consistentCount++;
+      consistExDetail.push({name, ok:true, note:'variance '+rv.toFixed(1)});
+      exPts.push('Consistent (var '+rv.toFixed(1)+')');
+    } else {
+      consistExDetail.push({name, ok:false, note:ws.length<3?'need 3+ sets':'variance '+rv.toFixed(1)});
     }
 
-    // Show exactly what this exercise did NOT earn (so every point is accounted for).
-    if(prev && !gotWeight) { notEarnedPts+=0.4; breakdown.push({text:name+': no weight increase',pts:'not earned +0.4',running:''}); }
-    if(prev && !gotReps) { notEarnedPts+=0.2; breakdown.push({text:name+': no rep increase',pts:'not earned +0.2',running:''}); }
-    if(!gotConsistency) { notEarnedPts+=0.2; breakdown.push({text:name+': no consistency bonus'+(ws.length<3?' (need 3+ sets)':' (variance: '+rv.toFixed(1)+')'),pts:'not earned +0.2',running:''}); }
-
-    if(!exPts.length) exPts.push('No change vs previous session');
+    if(!exPts.length) exPts.push('No change vs previous');
     exBreakdowns.push({name, pts:exPts, sets:ws.map(s=>s.kg+'kg x '+s.reps)});
   });
 
-  // Exercise count bonus
-  if(totalEx>=4) {
-    score+=0.3; runningScore+=0.3;
-    breakdown.push({text:'4+ exercises in session',pts:0.3,running:Math.round(runningScore*10)/10});
-  } else {
-    notEarnedPts+=0.3;
-    breakdown.push({text:'Fewer than 4 exercises',pts:'not earned +0.3',running:''});
-  }
-  if(totalEx>=6) {
-    score+=0.2; runningScore+=0.2;
-    breakdown.push({text:'6+ exercises — high volume bonus',pts:0.2,running:Math.round(runningScore*10)/10});
-  } else {
-    notEarnedPts+=0.2;
-    breakdown.push({text:'Fewer than 6 exercises',pts:'not earned +0.2',running:''});
-  }
+  // ── Pass 2: calculate each pool's score ──
+  const baseScore = POOLS.base;
+  const weightPct = exWithPrev>0 ? overloadCount/exWithPrev : 1;
+  const weightScore = Math.round(weightPct*POOLS.weight*100)/100;
+  const repPct = exWithPrev>0 ? repOverloadCount/exWithPrev : 1;
+  const repScore = Math.round(repPct*POOLS.reps*100)/100;
+  const consistPct = totalEx>0 ? consistentCount/totalEx : 0;
+  const consistScore = Math.round(consistPct*POOLS.consistency*100)/100;
+  let volScore=0;
+  if(totalEx>=4) volScore+=0.3;
+  if(totalEx>=6) volScore+=0.2;
+  const pelScore = (workout.peloton&&workout.peloton.watts)?POOLS.peloton:0;
+  const dropPenalty = totalEx>0?(steepDropoffs*1.0+moderateDropoffs*0.4)/totalEx:0;
+  const formScore = Math.round(Math.max(0,POOLS.form*(1-dropPenalty))*100)/100;
 
-  // Peloton bonus
-  if(workout.peloton && workout.peloton.watts) {
-    score+=0.3; runningScore+=0.3;
-    breakdown.push({text:'Included cardio/Peloton ('+workout.peloton.watts+'W)',pts:0.3,running:Math.round(runningScore*10)/10});
-  } else {
-    notEarnedPts+=0.3;
-    breakdown.push({text:'No Peloton/cardio',pts:'not earned +0.3',running:''});
-  }
+  // ── Pass 3: build the breakdown table ──
+  // Each row: category name, earned/max, per-exercise detail.
+  let running = 0;
+  const addPool = (label, earned, max, pct, exList) => {
+    running = Math.round((running+earned)*100)/100;
+    breakdown.push({text:label, pts:earned, running, _max:max, _pct:pct, _exList:exList});
+  };
+  addPool('Base — you showed up and trained', baseScore, POOLS.base, 100, []);
+  addPool('Weight Progression — '+overloadCount+' of '+Math.max(exWithPrev,1)+' exercises increased weight', weightScore, POOLS.weight, Math.round(weightPct*100), weightExDetail);
+  addPool('Rep Progression — '+repOverloadCount+' of '+Math.max(exWithPrev,1)+' exercises increased reps', repScore, POOLS.reps, Math.round(repPct*100), repExDetail);
+  addPool('Set Consistency — '+consistentCount+' of '+totalEx+' exercises had low variance', consistScore, POOLS.consistency, Math.round(consistPct*100), consistExDetail);
+  addPool('Volume — '+totalEx+' exercises'+(totalEx>=6?' (6+ bonus)':totalEx>=4?' (4+ bonus)':''), volScore, POOLS.volume, Math.round((volScore/POOLS.volume)*100), []);
+  addPool('Peloton / Cardio'+(pelScore>0?' — included':' — not included'), pelScore, POOLS.peloton, pelScore>0?100:0, []);
+  addPool('Form Quality — '+(steepDropoffs+moderateDropoffs===0?'no drop-offs':(steepDropoffs+moderateDropoffs)+' drop-off(s) detected'), formScore, POOLS.form, Math.round((formScore/POOLS.form)*100), formExDetail);
 
-  // Summary: earned + not earned = theoretical max. Score caps at 10.
-  const theoretical = Math.round((runningScore + notEarnedPts)*10)/10;
-  breakdown.push({text:'', pts:'', running:''});
-  breakdown.push({text:'EARNED: '+Math.round(runningScore*10)/10+' · NOT EARNED: '+Math.round(notEarnedPts*10)/10+' · THEORETICAL MAX: '+theoretical+' (capped at 10)', pts:'', running:''});
-
-  if(overloadCount>0) details.unshift('Progressive overload achieved on '+overloadCount+' exercise(s).');
+  let score = baseScore+weightScore+repScore+consistScore+volScore+pelScore+formScore;
+  if(overloadCount>0) details.unshift('Progressive overload on '+overloadCount+' exercise(s).');
 
   if(workout.deload) {
     score=7; details.length=0; details.push('Deload session - recovery focused.');
-    breakdown.length=0; breakdown.push({text:'Deload session (fixed score)',pts:7,running:7});
+    breakdown.length=0; breakdown.push({text:'Deload session (fixed score)',pts:7,running:7,_max:10,_pct:70,_exList:[]});
     exBreakdowns.length=0;
   }
 
-  score = clamp(Math.round(score*10)/10, 1, 10);
+  score = clamp(Math.round(score*10)/10, 0, 10);
   return {score, details, breakdown, exBreakdowns, overloadCount, dropoffCount, topRangeCount, totalEx, consistentCount, repOverloadCount};
 }
 
@@ -7851,41 +7873,64 @@ function buildGradePopupHTML(grade, title) {
   const headerSuffix = isMetric ? ' — '+grade.score+'/100' : ' — '+grade.score+'/10';
   let html = '<div style="font-weight:700;font-size:1rem;color:var(--highlight2);margin-bottom:10px;">'+(title||'Grade Breakdown')+headerSuffix+'</div>';
 
-  // Point accumulation table
-  html += '<table class="cgp-table">';
-  html += '<tr><th>Item</th><th>'+(isMetric?'Value':'Pts')+'</th><th>'+(isMetric?'Running':'Total')+'</th></tr>';
+  if(isMetric) {
+    // Readiness score — simple table unchanged.
+    html += '<table class="cgp-table"><tr><th>Item</th><th>Value</th><th>Running</th></tr>';
+    (grade.breakdown||[]).forEach(b => {
+      if(typeof b.pts!=='number') return;
+      const col = b.pts>0?'var(--green)':b.pts<0?'#e74c3c':'var(--text)';
+      const ptsStr = (b.pts>0?'+':'')+(Number.isInteger(b.pts)?b.pts:b.pts.toFixed(1));
+      const runStr = typeof b.running==='number'?(Number.isInteger(b.running)?b.running:b.running.toFixed(1)):'';
+      html += '<tr><td>'+b.text+'</td><td style="color:'+col+';font-weight:700;">'+ptsStr+'</td><td style="color:var(--text2);">'+runStr+'</td></tr>';
+    });
+    html += '<tr class="cgp-final"><td>Result</td><td colspan="2" style="text-align:right;font-size:.95rem;">'+grade.score+' / 100</td></tr>';
+    html += '</table>';
+    return html;
+  }
+
+  // Session grade — pool-based breakdown.
+  // Each row has: category, earned/max, %, and optional per-exercise detail.
+  html += '<table style="width:100%;border-collapse:collapse;font-size:.8rem;">';
+  html += '<tr style="border-bottom:2px solid var(--border);"><th style="text-align:left;padding:4px 6px;color:var(--text2);font-size:.7rem;">CATEGORY</th><th style="text-align:right;padding:4px 6px;color:var(--text2);font-size:.7rem;">EARNED</th><th style="text-align:right;padding:4px 6px;color:var(--text2);font-size:.7rem;">MAX</th><th style="text-align:right;padding:4px 6px;color:var(--text2);font-size:.7rem;">TOTAL</th></tr>';
   (grade.breakdown||[]).forEach(b => {
-    let ptsStr, ptsColor;
-    if(b.text==='' && b.pts==='' && b.running==='') return; // spacer row
-    if(b.text.startsWith('EARNED:')) {
-      html += '<tr><td colspan="3" style="padding-top:10px;font-size:.72rem;color:var(--blue);border-top:2px solid var(--border);font-style:italic;">'+b.text+'</td></tr>';
-      return;
+    const earned = typeof b.pts==='number'?b.pts:0;
+    const max = b._max||0;
+    const pct = b._pct||0;
+    const exList = b._exList||[];
+    const full = earned>=max-0.01 && max>0;
+    const zero = earned<0.01 && max>0;
+    const col = full?'var(--green)':zero?'var(--orange)':'var(--highlight2)';
+    const earnedStr = earned.toFixed(1);
+    const maxStr = max.toFixed(1);
+    const runStr = typeof b.running==='number'?b.running.toFixed(1):'';
+    html += '<tr style="border-bottom:1px solid rgba(255,255,255,.05);">';
+    html += '<td style="padding:5px 6px;">'+b.text+'</td>';
+    html += '<td style="text-align:right;padding:5px 6px;color:'+col+';font-weight:700;">'+earnedStr+'</td>';
+    html += '<td style="text-align:right;padding:5px 6px;color:var(--text2);">'+maxStr+'</td>';
+    html += '<td style="text-align:right;padding:5px 6px;color:var(--text2);">'+runStr+'</td>';
+    html += '</tr>';
+    // Per-exercise detail rows (small, indented).
+    if(exList.length) {
+      exList.forEach(e => {
+        const eCol = e.ok?'var(--green)':'var(--orange)';
+        html += '<tr style="border-bottom:1px solid rgba(255,255,255,.02);"><td colspan="4" style="padding:1px 6px 1px 20px;font-size:.7rem;color:var(--text2);"><span style="color:'+eCol+';">'+(e.ok?'✓':'✗')+'</span> '+e.name+' — '+e.note+'</td></tr>';
+      });
     }
-    if(typeof b.pts==='string' && b.pts.startsWith('not earned')) {
-      ptsColor = 'var(--orange)'; ptsStr = b.pts;
-    } else if(typeof b.pts==='number') {
-      ptsColor = b.pts>0?'var(--green)':b.pts<0?'#e74c3c':'var(--text)';
-      ptsStr = (b.pts>0&&!isMetric?'+':'') + (Number.isInteger(b.pts)?b.pts:b.pts.toFixed(1));
-    } else {
-      ptsColor = 'var(--text2)';
-      ptsStr = b.pts || '';
-    }
-    const runStr = (b.running===''||b.running==null) ? '' : (typeof b.running==='number' ? (Number.isInteger(b.running)?b.running:b.running.toFixed(1)) : b.running);
-    html += '<tr><td>'+b.text+'</td><td style="color:'+ptsColor+';font-weight:700;">'+ptsStr+'</td><td style="color:var(--text2);">'+runStr+'</td></tr>';
   });
-  if(!isMetric) html += '<tr class="cgp-final"><td>Final Score</td><td colspan="2" style="text-align:right;font-size:.9rem;">'+grade.score+' / 10</td></tr>';
-  else html += '<tr class="cgp-final"><td>Result</td><td colspan="2" style="text-align:right;font-size:.95rem;">'+grade.score+' / 100</td></tr>';
+  html += '<tr style="border-top:2px solid var(--border);"><td style="padding:6px;font-weight:700;color:var(--highlight2);">Final Score</td><td colspan="3" style="text-align:right;padding:6px;font-weight:800;font-size:1.1rem;color:var(--highlight2);">'+grade.score+' / 10</td></tr>';
   html += '</table>';
 
-  // Per-exercise detail
+  // Per-exercise summary (compact).
   if(grade.exBreakdowns && grade.exBreakdowns.length) {
     html += '<div style="margin-top:10px;font-weight:700;font-size:.8rem;color:var(--blue);">Per Exercise:</div>';
     grade.exBreakdowns.forEach(ex => {
       html += '<div class="cgp-ex"><div class="cgp-ex-name">'+ex.name+'</div>';
       html += '<div class="cgp-ex-sets">'+ex.sets.join(' | ')+'</div>';
       ex.pts.forEach(p => {
-        const c = p.startsWith('+')?'var(--green)':p.startsWith('-')?'#e74c3c':'var(--text2)';
-        html += '<div class="cgp-ex-pt" style="color:'+c+';">'+p+'</div>';
+        const hasUp = p.includes('↑')||p.includes('Consistent')||p.includes('clean');
+        const hasDown = p.includes('drop-off');
+        const c2 = hasUp?'var(--green)':hasDown?'#e74c3c':'var(--text2)';
+        html += '<div class="cgp-ex-pt" style="color:'+c2+';">'+p+'</div>';
       });
       html += '</div>';
     });
@@ -10082,43 +10127,10 @@ window.coachAnalyzeSession = function(dateStr) {
     html += '</div>';
   }
 
-  // Grade breakdown explanation
+  // Grade breakdown — pool-based, reuses buildGradePopupHTML for consistency.
   if(grade.breakdown && grade.breakdown.length) {
     html += '<div style="margin-top:12px;padding:12px;background:var(--card2);border-radius:8px;">';
-    html += '<div style="font-weight:700;margin-bottom:8px;font-size:.9rem;">Grade Breakdown ('+grade.score+'/10)</div>';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:.82rem;">';
-    html += '<tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:4px 6px;color:var(--text2);">Item</th><th style="text-align:right;padding:4px 6px;color:var(--text2);width:55px;">Points</th><th style="text-align:right;padding:4px 6px;color:var(--text2);width:65px;">Running</th></tr>';
-    grade.breakdown.forEach(b => {
-      // Handle special rows: section headers, spacers, and string pts ("How to reach 10" items).
-      if(b.text==='' && b.pts==='' && b.running==='') return;
-      if(b.text.startsWith('EARNED:')) {
-        html += '<tr><td colspan="3" style="padding-top:10px;font-size:.74rem;color:var(--blue);border-top:2px solid var(--border);font-style:italic;">'+b.text+'</td></tr>';
-        return;
-      }
-      const isNotEarned = typeof b.pts==='string' && b.pts.startsWith('not earned');
-      const ptsNum = typeof b.pts==='number' ? b.pts : 0;
-      const ptsColor = isNotEarned?'var(--orange)':(ptsNum>0?'var(--green)':ptsNum<0?'#e74c3c':'var(--text)');
-      const ptsDisplay = typeof b.pts==='string' ? b.pts : ((b.pts>0?'+':'')+(Number.isInteger(b.pts)?b.pts:b.pts.toFixed(1)));
-      const runDisplay = (b.running===''||b.running==null) ? '' : (typeof b.running==='number'?(Number.isInteger(b.running)?b.running:b.running.toFixed(1)):b.running);
-      html += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);"><td style="padding:4px 6px;">'+b.text+'</td><td style="text-align:right;padding:4px 6px;color:'+ptsColor+';font-weight:700;">'+ptsDisplay+'</td><td style="text-align:right;padding:4px 6px;color:var(--text2);">'+runDisplay+'</td></tr>';
-    });
-    html += '<tr style="border-top:2px solid var(--border);"><td style="padding:6px;font-weight:700;color:var(--highlight2);">Final Score</td><td colspan="2" style="text-align:right;padding:6px;font-weight:800;font-size:1rem;color:var(--highlight2);">'+grade.score+' / 10</td></tr>';
-    html += '</table>';
-    // Per-exercise detail
-    if(grade.exBreakdowns && grade.exBreakdowns.length) {
-      html += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">';
-      html += '<div style="font-weight:700;font-size:.85rem;color:var(--blue);margin-bottom:8px;">Per Exercise Scoring:</div>';
-      grade.exBreakdowns.forEach(ex => {
-        html += '<div style="margin-bottom:8px;padding:8px;background:var(--input-bg);border-radius:6px;">';
-        html += '<div style="font-weight:700;color:var(--highlight2);margin-bottom:4px;">'+ex.name+' <span style="font-weight:400;color:var(--text2);font-size:.78rem;">('+ex.sets.join(', ')+')</span></div>';
-        ex.pts.forEach(p => {
-          const c = p.startsWith('+')?'var(--green)':p.startsWith('-')?'#e74c3c':'var(--text2)';
-          html += '<div style="font-size:.8rem;color:'+c+';padding-left:4px;">'+p+'</div>';
-        });
-        html += '</div>';
-      });
-      html += '</div>';
-    }
+    html += buildGradePopupHTML(grade, 'Grade Breakdown');
     html += '</div>';
   }
 
