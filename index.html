@@ -7445,7 +7445,7 @@ function gradeSession(workout) {
   });
 
   // Show missed-point rows with actual TOTALS so the user sees exactly where the gap to 10 comes from.
-  // Weight/rep/consistency are per-exercise, so the missed total depends on how many exercises qualified.
+  let missedPts = 0;
   const missedWeight = (exWithPrev - overloadCount) * 0.4;
   const missedReps = (exWithPrev - repOverloadCount) * 0.2;
   const missedConsistency = (totalEx - consistentCount) * 0.2;
@@ -7458,14 +7458,14 @@ function gradeSession(workout) {
     score+=0.3; runningScore+=0.3;
     breakdown.push({text:'4+ exercises in session',pts:0.3,running:Math.round(runningScore*10)/10});
   } else {
-    missedPts+=0.3; missedItems.push('volume bonus (+0.3)');
+    missedPts+=0.3;
     breakdown.push({text:'Fewer than 4 exercises — no volume bonus',pts:'missed +0.3',running:runningScore});
   }
   if(totalEx>=6) {
     score+=0.2; runningScore+=0.2;
     breakdown.push({text:'6+ exercises — high volume bonus',pts:0.2,running:Math.round(runningScore*10)/10});
   } else if(totalEx>=4) {
-    missedPts+=0.2; missedItems.push('high volume bonus (+0.2)');
+    missedPts+=0.2;
     breakdown.push({text:'Fewer than 6 exercises — no extra volume bonus',pts:'missed +0.2',running:runningScore});
   }
 
@@ -7474,7 +7474,7 @@ function gradeSession(workout) {
     score+=0.3; runningScore+=0.3;
     breakdown.push({text:'Included cardio/Peloton ('+workout.peloton.watts+'W)',pts:0.3,running:Math.round(runningScore*10)/10});
   } else {
-    missedPts+=0.3; missedItems.push('Peloton/cardio (+0.3)');
+    missedPts+=0.3;
     breakdown.push({text:'No Peloton/cardio in this session',pts:'missed +0.3',running:runningScore});
   }
 
