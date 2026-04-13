@@ -7523,6 +7523,294 @@ function gradeSession(workout) {
   return {score, details, breakdown, exBreakdowns, overloadCount, dropoffCount, topRangeCount, totalEx, consistentCount, repOverloadCount};
 }
 
+// ── ALTERNATIVE SCORING SYSTEMS ──
+// Each returns the same shape as gradeSession: {score, details, breakdown, exBreakdowns, ...}
+// The user picks a method via a localStorage-saved preference.
+
+function getScoringMethod() { return localStorage.getItem('gym_scoring_method')||'optionA'; }
+function setScoringMethod(m) { localStorage.setItem('gym_scoring_method', m); }
+
+const SCORING_METHODS = {
+  optionA: {name:'Fixed Pools (Default)', short:'Default', desc:'Base 5.0 + proportional pools for weight progression, rep progression, consistency, volume, cardio, and form quality. Rewards showing up and executing your program.'},
+  mechanical: {name:'Mechanical Tension Index', short:'Mech. Tension', desc:'Based on Schoenfeld (2010) — mechanical tension is the primary hypertrophy driver. Each rep is weighted by a nonlinear intensity factor reflecting motor unit recruitment at that % of e1RM. Integrates Krieger (2010) dose-response data for optimal sets per exercise.'},
+  intensity: {name:'Relative Intensity Profile', short:'Rel. Intensity', desc:'Based on Eric Helms / MASS Research Review — scores how well your set intensities (% of estimated 1RM) match the optimal 65-85% hypertrophy zone. Rewards consistent load selection and training at productive intensities.'},
+  inol: {name:'INOL Session Quality', short:'INOL', desc:'Based on Hristov\'s Intensity Number of Lifts — INOL = reps / (100 - intensity%). A single metric combining volume and intensity. Optimal per-exercise INOL is 0.4-1.0. Catches both under-training and over-training.'}
+};
+
+// Dispatcher: calls the right scoring function based on user preference.
+function gradeSessionDispatch(workout) {
+  const method = getScoringMethod();
+  if(method==='mechanical') return gradeSessionMechanicalTension(workout);
+  if(method==='intensity') return gradeSessionRelativeIntensity(workout);
+  if(method==='inol') return gradeSessionINOL(workout);
+  return gradeSession(workout);
+}
+
+// Helper: get exercise intensity and e1RM data for a workout.
+function getExerciseIntensityData(workout) {
+  const c = buildCache();
+  const results = [];
+  (workout.exercises||[]).forEach(ex => {
+    const name = resolveExerciseName(ex.name);
+    const ws = getWorkingSetsFromExercise(ex);
+    if(!ws.length) return;
+    const mult = normalizeWeight(ex);
+    const hist = (c.exerciseHistory[name]||[]).filter(h=>!h.deload);
+    const prevSessions = hist.filter(h=>h.date<workout.date);
+    const prev = prevSessions.length?prevSessions[prevSessions.length-1]:null;
+    // Best historical e1RM for this exercise (or estimate from current session).
+    const historicalBest = hist.length ? Math.max(...hist.map(h=>h.bestE1RM||h.rawE1RM||0)) : 0;
+    const currentE1RM = Math.max(...ws.map(s=>estimateE1RM(s.kg*mult,s.reps)));
+    const bestE1RM = Math.max(historicalBest, currentE1RM) || 1;
+    const sets = ws.map(s => {
+      const effKg = s.kg * mult;
+      const pctE1RM = Math.min(100, (effKg / bestE1RM) * 100);
+      return {kg:s.kg, effKg, reps:s.reps, pctE1RM, e1rm:estimateE1RM(effKg, s.reps)};
+    });
+    const prevE1RM = prev ? (prev.bestE1RM||prev.rawE1RM||0) : null;
+    const bp = ex.bodyPart || getBodyPartForExercise(name) || 'other';
+    results.push({name, sets, bestE1RM, currentE1RM, prevE1RM, prev, bp, totalSets:ws.length});
+  });
+  return results;
+}
+
+// ── SYSTEM 10: Mechanical Tension Index (Schoenfeld 2010 + Krieger 2010) ──
+function gradeSessionMechanicalTension(workout) {
+  const POOLS = {tension:3.0, balance:2.0, progression:2.0, distribution:1.5, dose:1.5};
+  const exData = getExerciseIntensityData(workout);
+  const details=[], breakdown=[], exBreakdowns=[];
+  if(!exData.length) return {score:0,details:['No exercises.'],breakdown:[{text:'No data',pts:0,running:0,_max:10,_pct:0,_exList:[]}],exBreakdowns:[],overloadCount:0,dropoffCount:0,topRangeCount:0,totalEx:0};
+
+  // Intensity factor curve (nonlinear motor unit recruitment).
+  const intFactor = pct => pct>=80?1.15:pct>=70?1.0:pct>=55?0.7:pct>=40?0.4:0.2;
+  const MAX_FACTOR = 1.2;
+
+  let totalMTI=0, totalTheoreticalMTI=0, totalEx=exData.length;
+  let progressedCount=0, exWithPrev=0;
+  const exMTIs=[], tensionDetail=[], balanceDetail=[], progressDetail=[];
+  const bpSets={};
+
+  exData.forEach(d => {
+    let exMTI=0, exTheo=0;
+    const exPts=[];
+    d.sets.forEach(s => {
+      const f = intFactor(s.pctE1RM);
+      exMTI += s.effKg * s.reps * f;
+      exTheo += s.effKg * s.reps * MAX_FACTOR;
+    });
+    totalMTI+=exMTI; totalTheoreticalMTI+=exTheo;
+    exMTIs.push(exMTI);
+
+    // Balance (Krieger dose-response: 3-5 sets optimal)
+    let balScore;
+    if(d.totalSets>=3&&d.totalSets<=5) balScore=1.0;
+    else if(d.totalSets===2) balScore=0.7;
+    else if(d.totalSets===1) balScore=0.4;
+    else balScore=0.8; // 6+
+    balanceDetail.push({name:d.name, ok:balScore>=0.7, note:d.totalSets+' sets'+(balScore<0.7?' (too few)':d.totalSets>5?' (diminishing returns)':' (optimal)')});
+
+    // Progression
+    if(d.prevE1RM!==null) {
+      exWithPrev++;
+      if(d.currentE1RM > d.prevE1RM*1.005) { progressedCount++; progressDetail.push({name:d.name,ok:true,note:'e1RM '+Math.round(d.prevE1RM)+'→'+Math.round(d.currentE1RM)+'kg'}); exPts.push('e1RM ↑'); }
+      else { progressDetail.push({name:d.name,ok:false,note:'e1RM maintained at '+Math.round(d.currentE1RM)+'kg'}); }
+    }
+
+    // Body part sets
+    bpSets[d.bp] = (bpSets[d.bp]||0) + d.totalSets;
+
+    const avgPct = d.sets.reduce((s,x)=>s+x.pctE1RM,0)/d.sets.length;
+    tensionDetail.push({name:d.name, ok:avgPct>=65, note:Math.round(avgPct)+'% avg intensity, factor '+intFactor(avgPct).toFixed(2)});
+
+    if(!exPts.length) exPts.push('Maintained');
+    exBreakdowns.push({name:d.name, pts:exPts, sets:d.sets.map(s=>s.kg+'kg x '+s.reps)});
+  });
+
+  // Pool scores
+  const tensionRatio = totalTheoreticalMTI>0 ? Math.min(1, totalMTI/totalTheoreticalMTI) : 0;
+  const tensionScore = Math.round(tensionRatio*POOLS.tension*100)/100;
+  const balAvg = balanceDetail.reduce((s,d)=>s+(d.ok?1:0.4),0)/totalEx;
+  const balanceScore = Math.round(balAvg*POOLS.balance*100)/100;
+  const progPct = exWithPrev>0 ? progressedCount/exWithPrev : 0.5;
+  const progScore = Math.round(progPct*POOLS.progression*100)/100;
+  // Distribution (Gini-like: 1 - normalized spread)
+  const avgMTI = exMTIs.reduce((a,b)=>a+b,0)/exMTIs.length;
+  const gini = avgMTI>0 ? exMTIs.reduce((s,m)=>s+Math.abs(m-avgMTI),0)/(2*exMTIs.length*avgMTI) : 0;
+  const distScore = Math.round(Math.max(0,(1-gini))*POOLS.distribution*100)/100;
+  // Dose-response (2-6 sets per body part per session)
+  const bpScores = Object.values(bpSets).map(s => s>=2&&s<=6?1:s>=7&&s<=10?0.8:s===1?0.5:0.5);
+  const doseScore = Math.round((bpScores.reduce((a,b)=>a+b,0)/bpScores.length)*POOLS.dose*100)/100;
+
+  let running=0;
+  const addPool=(label,earned,max,exList)=>{running=Math.round((running+earned)*100)/100;breakdown.push({text:label,pts:earned,running,_max:max,_pct:Math.round((earned/max)*100),_exList:exList});};
+  addPool('Tension Density — how much growth-driving tension your reps produced',tensionScore,POOLS.tension,tensionDetail);
+  addPool('Volume-Tension Balance — 3-5 sets/exercise is optimal (Krieger 2010)',balanceScore,POOLS.balance,balanceDetail);
+  addPool('Tension Progression — e1RM improved on '+progressedCount+'/'+Math.max(exWithPrev,1),progScore,POOLS.progression,progressDetail);
+  addPool('Tension Distribution — even contribution across exercises',distScore,POOLS.distribution,[]);
+  addPool('Dose-Response — 2-6 sets per body part (Krieger optimal)',doseScore,POOLS.dose,[]);
+
+  let score = tensionScore+balanceScore+progScore+distScore+doseScore;
+  if(workout.deload){score=7;breakdown.length=0;breakdown.push({text:'Deload (fixed)',pts:7,running:7,_max:10,_pct:70,_exList:[]});exBreakdowns.length=0;}
+  score=clamp(Math.round(score*10)/10,0,10);
+  return {score,details,breakdown,exBreakdowns,overloadCount:progressedCount,dropoffCount:0,topRangeCount:0,totalEx,consistentCount:0,repOverloadCount:0};
+}
+
+// ── SYSTEM 9: Relative Intensity Profile (Helms / MASS) ──
+function gradeSessionRelativeIntensity(workout) {
+  const POOLS = {zone:3.5, exConsist:2.0, histMatch:1.5, progression:1.5, breadth:1.5};
+  const exData = getExerciseIntensityData(workout);
+  const details=[], breakdown=[], exBreakdowns=[];
+  if(!exData.length) return {score:0,details:['No exercises.'],breakdown:[{text:'No data',pts:0,running:0,_max:10,_pct:0,_exList:[]}],exBreakdowns:[],overloadCount:0,dropoffCount:0,topRangeCount:0,totalEx:0};
+
+  let totalEx=exData.length, inZoneCount=0, heavyCount=0;
+  let progressedCount=0, exWithPrev=0;
+  const zoneDetail=[], consistDetail=[], matchDetail=[], progDetail=[];
+
+  exData.forEach(d => {
+    const exPts=[];
+    // Zone quality per set: 65-80%=1.0, 80-90%=0.85, 50-65%=0.55, 90+=0.4, <50%=0.1
+    const setScores = d.sets.map(s => {
+      const p=s.pctE1RM;
+      return p>=65&&p<=80?1.0:p>80&&p<=90?0.85:p>=50&&p<65?0.55:p>90?0.4:0.1;
+    });
+    const avgZone = setScores.reduce((a,b)=>a+b,0)/setScores.length;
+    const avgPct = d.sets.reduce((s,x)=>s+x.pctE1RM,0)/d.sets.length;
+    if(avgPct>=65&&avgPct<=85) inZoneCount++;
+    if(avgPct>80) heavyCount++;
+    zoneDetail.push({name:d.name, ok:avgZone>=0.8, note:Math.round(avgPct)+'% avg (score '+avgZone.toFixed(2)+')'});
+
+    // Per-exercise consistency (same weight across sets)
+    const weights = d.sets.map(s=>s.kg);
+    const wMean = weights.reduce((a,b)=>a+b,0)/weights.length;
+    const wCoV = wMean>0 ? Math.sqrt(weights.reduce((s,w)=>s+(w-wMean)**2,0)/weights.length)/wMean : 0;
+    const cScore = wCoV<0.05?1.0:wCoV<0.15?0.6:0.2;
+    consistDetail.push({name:d.name, ok:cScore>=0.6, note:'weight CoV '+wCoV.toFixed(2)+(cScore>=0.8?' (consistent)':' (variable)')});
+
+    // Historical match
+    if(d.prevE1RM!==null) {
+      exWithPrev++;
+      const ratio = d.currentE1RM / d.prevE1RM;
+      const mScore = ratio>=0.95?1.0:ratio>=0.85?0.5:0.0;
+      matchDetail.push({name:d.name, ok:mScore>=0.8, note:'e1RM '+(ratio>=1.0?'maintained/improved':'declined '+Math.round((1-ratio)*100)+'%')});
+      if(d.currentE1RM>d.prevE1RM*1.005) { progressedCount++; progDetail.push({name:d.name,ok:true,note:'e1RM ↑ '+Math.round(d.prevE1RM)+'→'+Math.round(d.currentE1RM)}); exPts.push('e1RM ↑'); }
+      else { progDetail.push({name:d.name,ok:false,note:'e1RM maintained'}); }
+    }
+
+    if(!exPts.length) exPts.push('Maintained');
+    exBreakdowns.push({name:d.name, pts:exPts, sets:d.sets.map(s=>s.kg+'kg x '+s.reps)});
+  });
+
+  // Pool scores
+  const allSetScores = exData.flatMap(d=>d.sets.map(s=>{const p=s.pctE1RM;return p>=65&&p<=80?1.0:p>80&&p<=90?0.85:p>=50&&p<65?0.55:p>90?0.4:0.1;}));
+  const zoneScore = Math.round((allSetScores.reduce((a,b)=>a+b,0)/allSetScores.length)*POOLS.zone*100)/100;
+  const consistAvg = consistDetail.reduce((s,d)=>s+(d.ok?1:0.3),0)/totalEx;
+  const consistScore = Math.round(consistAvg*POOLS.exConsist*100)/100;
+  const matchScores = matchDetail.map(d=>d.ok?1.0:0.4);
+  const matchScore = matchScores.length ? Math.round((matchScores.reduce((a,b)=>a+b,0)/matchScores.length)*POOLS.histMatch*100)/100 : Math.round(0.75*POOLS.histMatch*100)/100;
+  const progPct = exWithPrev>0 ? progressedCount/exWithPrev : 0.5;
+  const progScore = Math.round(progPct*POOLS.progression*100)/100;
+  let breadthScore = 0;
+  if(inZoneCount>=3) breadthScore+=0.5;
+  if(inZoneCount>=5) breadthScore+=0.5;
+  if(heavyCount>=1) breadthScore+=0.5;
+
+  let running=0;
+  const addPool=(label,earned,max,exList)=>{running=Math.round((running+earned)*100)/100;breakdown.push({text:label,pts:earned,running,_max:max,_pct:Math.round((earned/max)*100),_exList:exList});};
+  addPool('Intensity Zone Quality — % of sets in 65-85% hypertrophy zone',zoneScore,POOLS.zone,zoneDetail);
+  addPool('Per-Exercise Consistency — consistent weight across sets',consistScore,POOLS.exConsist,consistDetail);
+  addPool('Historical Intensity Match — maintaining or exceeding your recent level',matchScore,POOLS.histMatch,matchDetail);
+  addPool('Intensity Progression — '+progressedCount+'/'+Math.max(exWithPrev,1)+' exercises improved e1RM',progScore,POOLS.progression,progDetail);
+  addPool('Session Breadth — '+inZoneCount+' exercises in zone'+(heavyCount>0?', '+heavyCount+' heavy':''),breadthScore,POOLS.breadth,[]);
+
+  let score = zoneScore+consistScore+matchScore+progScore+breadthScore;
+  if(workout.deload){score=7;breakdown.length=0;breakdown.push({text:'Deload (fixed)',pts:7,running:7,_max:10,_pct:70,_exList:[]});exBreakdowns.length=0;}
+  score=clamp(Math.round(score*10)/10,0,10);
+  return {score,details,breakdown,exBreakdowns,overloadCount:progressedCount,dropoffCount:0,topRangeCount:0,totalEx,consistentCount:0,repOverloadCount:0};
+}
+
+// ── SYSTEM 8: INOL Session Quality (Hristov) ──
+function gradeSessionINOL(workout) {
+  const POOLS = {quality:3.5, total:2.0, intensity:1.5, progression:1.5, breadth:1.5};
+  const exData = getExerciseIntensityData(workout);
+  const details=[], breakdown=[], exBreakdowns=[];
+  if(!exData.length) return {score:0,details:['No exercises.'],breakdown:[{text:'No data',pts:0,running:0,_max:10,_pct:0,_exList:[]}],exBreakdowns:[],overloadCount:0,dropoffCount:0,topRangeCount:0,totalEx:0};
+
+  let totalEx=exData.length, totalINOL=0, productiveEx=0;
+  let progressedCount=0, exWithPrev=0;
+  const qualDetail=[], progDetail=[];
+  let hasAbove65=false, hasAbove75=false;
+
+  exData.forEach(d => {
+    const exPts=[];
+    // INOL per exercise = sum of reps/(100-intensity%) across sets
+    let exINOL = 0;
+    d.sets.forEach(s => {
+      const denom = Math.max(1, 100 - s.pctE1RM);
+      exINOL += s.reps / denom;
+    });
+    totalINOL += exINOL;
+    const avgPct = d.sets.reduce((s,x)=>s+x.pctE1RM,0)/d.sets.length;
+    if(avgPct>=65) hasAbove65=true;
+    if(avgPct>=75) hasAbove75=true;
+
+    // Score: optimal INOL 0.4-1.0
+    let qScore;
+    if(exINOL>=0.4&&exINOL<=1.0) { qScore=1.0; productiveEx++; }
+    else if(exINOL>1.0&&exINOL<=1.5) qScore=0.8;
+    else if(exINOL>1.5&&exINOL<=2.0) qScore=0.5;
+    else if(exINOL<0.4) qScore=0.3;
+    else qScore=0.2;
+    qualDetail.push({name:d.name, ok:qScore>=0.8, note:'INOL '+exINOL.toFixed(2)+(qScore>=0.8?' (optimal)':exINOL<0.4?' (insufficient)':' (excessive)')});
+
+    // Progression
+    if(d.prevE1RM!==null) {
+      exWithPrev++;
+      if(d.currentE1RM>d.prevE1RM*1.005) { progressedCount++; progDetail.push({name:d.name,ok:true,note:'e1RM ↑'}); exPts.push('e1RM ↑'); }
+      else { progDetail.push({name:d.name,ok:false,note:'maintained'}); }
+    }
+
+    if(!exPts.length) exPts.push('INOL '+exINOL.toFixed(2));
+    exBreakdowns.push({name:d.name, pts:exPts, sets:d.sets.map(s=>s.kg+'kg x '+s.reps)});
+  });
+
+  // Pool scores
+  const qualAvg = qualDetail.reduce((s,d)=>s+(d.ok?1.0:0.35),0)/totalEx;
+  const qualScore = Math.round(qualAvg*POOLS.quality*100)/100;
+  // Session total INOL vs target (1.0 per exercise for hypertrophy)
+  const target = totalEx * 1.0;
+  const overLimit = target * 1.8;
+  let totalScore;
+  if(totalINOL>=target&&totalINOL<=overLimit) totalScore=POOLS.total;
+  else if(totalINOL<target) totalScore=Math.round(Math.max(0,(totalINOL/target))*POOLS.total*100)/100;
+  else totalScore=Math.round(Math.max(0,1-(totalINOL-overLimit)/(target))*POOLS.total*100)/100;
+  // Intensity distribution
+  let intScore = 0;
+  if(hasAbove65) intScore+=0.75;
+  if(hasAbove75) intScore+=0.75;
+  // Progression
+  const progPct = exWithPrev>0?progressedCount/exWithPrev:0.5;
+  const progScore = Math.round(progPct*POOLS.progression*100)/100;
+  // Breadth
+  let breadthScore=0;
+  if(productiveEx>=3) breadthScore+=0.5;
+  if(productiveEx>=5) breadthScore+=0.5;
+  const bps = new Set(exData.map(d=>d.bp));
+  if(bps.size>=2) breadthScore+=0.5;
+
+  let running=0;
+  const addPool=(label,earned,max,exList)=>{running=Math.round((running+earned)*100)/100;breakdown.push({text:label,pts:earned,running,_max:max,_pct:Math.round((earned/max)*100),_exList:exList});};
+  addPool('Per-Exercise INOL Quality — optimal range 0.4-1.0',qualScore,POOLS.quality,qualDetail);
+  addPool('Session Total INOL — '+totalINOL.toFixed(1)+' (target ~'+target.toFixed(0)+')',totalScore,POOLS.total,[]);
+  addPool('Intensity Distribution — meaningful work above 65%/75% e1RM',intScore,POOLS.intensity,[]);
+  addPool('INOL Progression — '+progressedCount+'/'+Math.max(exWithPrev,1)+' exercises improved',progScore,POOLS.progression,progDetail);
+  addPool('Exercise Breadth — '+productiveEx+' productive exercises, '+bps.size+' body parts',breadthScore,POOLS.breadth,[]);
+
+  let score = qualScore+totalScore+intScore+progScore+breadthScore;
+  if(workout.deload){score=7;breakdown.length=0;breakdown.push({text:'Deload (fixed)',pts:7,running:7,_max:10,_pct:70,_exList:[]});exBreakdowns.length=0;}
+  score=clamp(Math.round(score*10)/10,0,10);
+  return {score,details,breakdown,exBreakdowns,overloadCount:progressedCount,dropoffCount:0,topRangeCount:0,totalEx,consistentCount:0,repOverloadCount:0};
+}
+
 function getNextSessionSuggestions() {
   const c = buildCache();
   const split = detectTrainingSplit();
@@ -7880,6 +8168,13 @@ function buildGradePopupHTML(grade, title) {
   const headerSuffix = isMetric ? ' — '+grade.score+'/100' : ' — '+grade.score+'/10';
   let html = '<div style="font-weight:700;font-size:1rem;color:var(--highlight2);margin-bottom:10px;">'+(title||'Grade Breakdown')+headerSuffix+'</div>';
 
+  // Show scoring method info for session grades (not readiness).
+  if(!isMetric) {
+    const method = getScoringMethod();
+    const mInfo = SCORING_METHODS[method]||SCORING_METHODS.optionA;
+    html += '<div style="font-size:.7rem;color:var(--text2);padding:6px 8px;background:var(--input-bg);border-radius:5px;margin-bottom:10px;line-height:1.4;"><strong style="color:var(--blue);">'+mInfo.name+':</strong> '+mInfo.desc+'</div>';
+  }
+
   if(isMetric) {
     // Readiness score — simple table unchanged.
     html += '<table class="cgp-table"><tr><th>Item</th><th>Value</th><th>Running</th></tr>';
@@ -8074,7 +8369,7 @@ function renderBriefing() {
 
   // Last session deep insight
   if(lastWorkout) {
-    const grade = gradeSession(lastWorkout);
+    const grade = gradeSessionDispatch(lastWorkout);
     const lastParts = (lastWorkout.bodyParts||[]).map(p=>p.charAt(0).toUpperCase()+p.slice(1)).join(', ');
     const lastDateLabel = new Date(lastWorkout.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'});
     const daysSinceLast = daysBetween(lastWorkout.date, todayStr());
@@ -8183,7 +8478,7 @@ function renderBriefing() {
     const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
     const yesterdayW = c.workouts.find(w=>w.date===formatDate(yesterday));
     if(yesterdayW) {
-      const yGrade = gradeSession(yesterdayW);
+      const yGrade = gradeSessionDispatch(yesterdayW);
       if(yGrade.score<6) todayAlerts.push({type:'warning',msg:'Yesterday\'s session scored '+yGrade.score+'/10. If you feel fatigued, reduce today\'s intensity by 10% and focus on form.'});
     }
 
@@ -8219,14 +8514,26 @@ function renderSessionAnalysis() {
   const days = getCoachDays();
   const rangeLabel = days===0?'All Time':('Last '+days+' Days');
   let html = '<div class="coach-section"><h3>Session Analysis ('+rangeLabel+')</h3>';
-  html += '<p style="font-size:.8rem;color:var(--text2);margin-bottom:12px;">Select a session to analyze:</p>';
-  html += '<select id="coach-session-select" onchange="coachAnalyzeSession(this.value)" style="margin-bottom:16px;">';
+  // Scoring method selector
+  const curMethod = getScoringMethod();
+  html += '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">';
+  html += '<div><label style="font-size:.78rem;color:var(--text2);display:block;margin-bottom:3px;">Session</label>';
+  html += '<select id="coach-session-select" onchange="coachAnalyzeSession(this.value)">';
   const recent = filtered.slice(-20).reverse();
   recent.forEach((w,i) => {
     const parts = (w.bodyParts||[]).join(', ');
     html += '<option value="'+w.date+'">'+new Date(w.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+' - '+parts+(w.deload?' (Deload)':'')+'</option>';
   });
-  html += '</select>';
+  html += '</select></div>';
+  html += '<div><label style="font-size:.78rem;color:var(--text2);display:block;margin-bottom:3px;">Scoring Method</label>';
+  html += '<select id="coach-scoring-method" onchange="setScoringMethod(this.value);var ss=document.getElementById(\'coach-session-select\');if(ss)coachAnalyzeSession(ss.value);" style="min-width:160px;">';
+  Object.entries(SCORING_METHODS).forEach(([key,m]) => {
+    html += '<option value="'+key+'"'+(curMethod===key?' selected':'')+'>'+m.short+'</option>';
+  });
+  html += '</select></div></div>';
+  // Method description
+  const mInfo = SCORING_METHODS[curMethod]||SCORING_METHODS.optionA;
+  html += '<div id="scoring-method-desc" style="font-size:.72rem;color:var(--text2);padding:8px 10px;background:var(--card2);border-radius:6px;margin-bottom:12px;">'+mInfo.desc+'</div>';
   html += '<div id="coach-session-detail"></div></div>';
 
   setTimeout(() => {
@@ -8899,7 +9206,7 @@ function renderReports() {
   html += '<div class="coach-metric"><span class="cm-label">Sessions</span><span class="cm-value">'+filtered.length+'</span></div>';
   let totalVL=0; filtered.forEach(w=>(w.exercises||[]).forEach(ex=>{const ws=getWorkingSetsFromExercise(ex);const m=normalizeWeight(ex);totalVL+=calcVolumeLoad(ws,m);}));
   html += '<div class="coach-metric"><span class="cm-label">Total Volume Load</span><span class="cm-value">'+Math.round(totalVL).toLocaleString()+' kg</span></div>';
-  const grades = filtered.map(w=>gradeSession(w).score);
+  const grades = filtered.map(w=>gradeSessionDispatch(w).score);
   html += '<div class="coach-metric"><span class="cm-label">Avg Session Grade</span><span class="cm-value">'+(grades.length?avg(grades).toFixed(1):'N/A')+'</span></div>';
   if(days>0) html += '<div class="coach-metric"><span class="cm-label">Consistency</span><span class="cm-value">'+Math.round(filtered.length/days*100)+'% active days</span></div>';
   html += '<div class="coach-metric"><span class="cm-label">Training Streak</span><span class="cm-value">'+streak.current+' weeks (best: '+streak.longest+')</span></div>';
@@ -8909,7 +9216,7 @@ function renderReports() {
   html += '<div class="card"><h3>Session Log <span style="font-size:.75rem;color:var(--text2);font-weight:400;">(hover grades for breakdown)</span></h3>';
   html += '<div style="max-height:400px;overflow-y:auto;">';
   filtered.slice().reverse().forEach(w => {
-    const g = gradeSession(w);
+    const g = gradeSessionDispatch(w);
     const parts = (w.bodyParts||[]).map(p=>p.charAt(0).toUpperCase()+p.slice(1)).join(', ');
     const dateLabel = new Date(w.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
     html += '<div class="coach-metric"><span class="cm-label">'+dateLabel+' - '+parts+(w.deload?' (Deload)':'')+'</span>';
@@ -8927,7 +9234,7 @@ function renderReports() {
     const dayWorkouts = filtered.filter(w=>new Date(w.date+'T12:00:00').getDay()===d);
     if(!dayWorkouts.length) continue;
     const recentDayWorkouts = dayWorkouts.slice(-8);
-    const gradeResults = recentDayWorkouts.map(w=>gradeSession(w));
+    const gradeResults = recentDayWorkouts.map(w=>gradeSessionDispatch(w));
     const avgGrade = avg(gradeResults.map(g=>g.score)).toFixed(1);
     const parts = {};
     dayWorkouts.forEach(w=>(w.bodyParts||[]).forEach(p=>{parts[p]=(parts[p]||0)+1;}));
@@ -10058,7 +10365,7 @@ window.coachAnalyzeSession = function(dateStr) {
   const el = document.getElementById('coach-session-detail');
   if(!el) return;
 
-  const grade = gradeSession(workout);
+  const grade = gradeSessionDispatch(workout);
   const parts = (workout.bodyParts||[]).map(p=>p.charAt(0).toUpperCase()+p.slice(1)).join(', ');
 
   let html = '<div class="card">';
