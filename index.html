@@ -6859,6 +6859,24 @@ function infoTip(bodyHtml) {
   return '<span class="info-tip" tabindex="0" aria-label="More info">i<span class="info-body">'+bodyHtml+'</span></span>';
 }
 
+// Render a compact inline breakdown table from a breakdown array (used by readiness and grade displays).
+// Shows each scoring item with its points and running total, so the user can see the full system at a glance.
+function inlineBreakdown(breakdown, maxScore, label) {
+  let h = '<div style="margin-top:8px;font-size:.7rem;line-height:1.4;">';
+  h += '<div style="font-weight:700;color:var(--text2);margin-bottom:3px;font-size:.68rem;text-transform:uppercase;letter-spacing:.3px;">Scoring breakdown ('+label+', max '+maxScore+')</div>';
+  (breakdown||[]).forEach(b => {
+    const pts = typeof b.pts==='number' ? b.pts : 0;
+    const col = pts>0?'var(--green)':pts<0?'#e74c3c':'var(--text2)';
+    const sign = pts>0?'+':'';
+    h += '<div style="display:flex;justify-content:space-between;gap:6px;padding:1px 0;border-bottom:1px solid rgba(255,255,255,.04);">';
+    h += '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+b.text+'</span>';
+    h += '<span style="color:'+col+';font-weight:700;white-space:nowrap;">'+sign+pts+'</span>';
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
 function getIndirectBodyParts(name, primaryBp) {
   const n = (name||'').toLowerCase();
   const out = {};
@@ -7318,6 +7336,14 @@ function getVolumeForRange(rangeKey) {
     const weeks = Object.keys(c.weeklyVolume).filter(wk => wk >= cutStr).sort();
     return {vol: mergeWeeklyVolumes(weeks.map(wk=>c.weeklyVolume[wk])), volEx: mergeWeeklyVolumesEx(weeks.map(wk=>c.weeklyVolumeEx[wk])), weekCount:Math.max(1,weeks.length), label:'Last 30 Days (avg/wk)'};
   }
+  // Custom date range: "custom:YYYY-MM-DD:YYYY-MM-DD"
+  if(rangeKey.startsWith('custom:')) {
+    const parts = rangeKey.split(':');
+    const fromStr = parts[1]; const toStr = parts[2];
+    const weeks = Object.keys(c.weeklyVolume).filter(wk => wk >= fromStr && wk <= toStr).sort();
+    const wc = Math.max(1, weeks.length);
+    return {vol: mergeWeeklyVolumes(weeks.map(wk=>c.weeklyVolume[wk])), volEx: mergeWeeklyVolumesEx(weeks.map(wk=>c.weeklyVolumeEx[wk])), weekCount:wc, label:fromStr+' to '+toStr+(wc>1?' (avg/wk)':'')};
+  }
   // Default: this week
   const wk = mondayWeekKey(new Date());
   return {vol: c.weeklyVolume[wk]||{}, volEx: c.weeklyVolumeEx[wk]||{}, weekCount:1, label:'This Week (Mon-Sun)'};
@@ -7414,20 +7440,33 @@ function gradeSession(workout) {
     exBreakdowns.push({name, pts:exPts, sets:ws.map(s=>s.kg+'kg x '+s.reps)});
   });
 
+  // Show 0-point rows for categories that didn't earn anything so the user can see
+  // exactly where the missing points went in the breakdown.
+  if(overloadCount===0) breakdown.push({text:'No weight increase on any exercise',pts:0,running:runningScore});
+  if(repOverloadCount===0) breakdown.push({text:'No rep increase at same/higher weight',pts:0,running:runningScore});
+  if(consistentCount===0) breakdown.push({text:'No set-consistency bonus (need stddev <1.5 across 3+ sets)',pts:0,running:runningScore});
+  if(dropoffCount===0) breakdown.push({text:'No rep drop-off penalties',pts:0,running:runningScore});
+
   // Exercise count bonus
   if(totalEx>=4) {
     score+=0.3; runningScore+=0.3;
-    breakdown.push({text:'4+ exercises in session',pts:0.3,running:Math.round(runningScore*10)/10});
+    breakdown.push({text:'4+ exercises in session (+0.3)',pts:0.3,running:Math.round(runningScore*10)/10});
+  } else {
+    breakdown.push({text:'Fewer than 4 exercises (no volume bonus)',pts:0,running:runningScore});
   }
   if(totalEx>=6) {
     score+=0.2; runningScore+=0.2;
-    breakdown.push({text:'6+ exercises (high volume session)',pts:0.2,running:Math.round(runningScore*10)/10});
+    breakdown.push({text:'6+ exercises — high volume bonus (+0.2)',pts:0.2,running:Math.round(runningScore*10)/10});
+  } else if(totalEx>=4) {
+    breakdown.push({text:'Fewer than 6 exercises (no extra volume bonus)',pts:0,running:runningScore});
   }
 
   // Peloton bonus
   if(workout.peloton && workout.peloton.watts) {
     score+=0.3; runningScore+=0.3;
     breakdown.push({text:'Included cardio/Peloton ('+workout.peloton.watts+'W)',pts:0.3,running:Math.round(runningScore*10)/10});
+  } else {
+    breakdown.push({text:'No Peloton/cardio in this session',pts:0,running:runningScore});
   }
 
   if(overloadCount>0) details.unshift('Progressive overload achieved on '+overloadCount+' exercise(s).');
@@ -7795,7 +7834,7 @@ function buildActionOptions(type, data) {
 
 function buildGradePopupHTML(grade, title) {
   const isMetric = grade.metricMode===true;
-  const headerSuffix = isMetric ? '' : ' — '+grade.score+'/10';
+  const headerSuffix = isMetric ? ' — '+grade.score+'/100' : ' — '+grade.score+'/10';
   let html = '<div style="font-weight:700;font-size:1rem;color:var(--highlight2);margin-bottom:10px;">'+(title||'Grade Breakdown')+headerSuffix+'</div>';
 
   // Point accumulation table
@@ -7868,8 +7907,12 @@ function renderBriefing() {
 
   // Readiness gauge with popup breakdown
   const readColor = readiness>=70?'var(--green)':readiness>=40?'var(--orange)':'#e74c3c';
-  const readGpId = storeGradeForPopup({score:readiness,breakdown:readinessData.breakdown,exBreakdowns:[]}, 'Readiness Score');
-  html += '<div class="coach-grid"><div class="card" style="cursor:pointer;" onclick="openGradePopup(\''+readGpId+'\')"><div class="readiness-gauge"><div class="readiness-circle" style="background:conic-gradient('+readColor+' '+readiness*3.6+'deg,var(--input-bg) 0deg)"><span style="background:var(--card);width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;">'+readiness+'</span></div><div class="readiness-label">Readiness Score <span style="font-size:.7rem;color:var(--highlight);">(tap for breakdown)</span></div></div></div>';
+  const readGpId = storeGradeForPopup({score:readiness,breakdown:readinessData.breakdown,exBreakdowns:[],metricMode:true}, 'Readiness Score');
+  html += '<div class="coach-grid"><div class="card" style="cursor:pointer;" onclick="openGradePopup(\''+readGpId+'\')">';
+  html += '<div class="readiness-gauge"><div class="readiness-circle" style="background:conic-gradient('+readColor+' '+readiness*3.6+'deg,var(--input-bg) 0deg)"><span style="background:var(--card);width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;">'+readiness+'</span></div>';
+  html += '<div class="readiness-label">Readiness Score <span style="font-size:.68rem;color:var(--text2);">'+readiness+' / 100</span></div></div>';
+  html += inlineBreakdown(readinessData.breakdown, 100, '0–100');
+  html += '</div>';
 
   // Quick stats
   html += '<div class="card"><h3 style="margin-bottom:12px;">Quick Stats</h3>';
@@ -7982,9 +8025,10 @@ function renderBriefing() {
       '<div class="tip-section"><strong>Tap the grade circle</strong> for the exact point-by-point breakdown.</div>'
     );
     html += '<div class="coach-grade '+gradeClass(grade.score)+'" style="cursor:pointer;" onclick="openGradePopup(\''+briefGpId+'\')">'+grade.score+'</div>';
-    html += '<div><div style="font-size:.85rem;color:var(--text2);">'+(grade.score>=8?'Excellent session':grade.score>=6.5?'Good session':'Room for improvement')+' <span style="font-size:.72rem;color:var(--text2);">/ 10</span>'+gradeTip+'</div>';
-    html += '<div style="font-size:.72rem;color:var(--highlight);cursor:pointer;" onclick="openGradePopup(\''+briefGpId+'\')">Tap score for full breakdown</div>';
+    html += '<div><div style="font-size:.85rem;color:var(--text2);">'+(grade.score>=8?'Excellent session':grade.score>=6.5?'Good session':'Room for improvement')+' <span style="font-size:.72rem;color:var(--text2);">/ 10</span></div>';
+    html += '<div style="font-size:.72rem;color:var(--highlight);cursor:pointer;" onclick="openGradePopup(\''+briefGpId+'\')">Tap score for per-exercise detail</div>';
     html += '<div style="font-size:.75rem;color:var(--text2);margin-top:2px;">'+daysSinceLast+' day(s) ago</div></div></div>';
+    html += inlineBreakdown(grade.breakdown, 10, '0–10');
 
     // Key metrics from last session
     let totalSets=0, totalVL=0, exerciseCount=0;
@@ -8184,7 +8228,12 @@ function renderVolumeDashboard() {
   html += '<option value="lastweek">Last Week (Mon-Sun)</option>';
   html += '<option value="2weeks">Last 2 Weeks (avg/wk)</option>';
   html += '<option value="30days">Last 30 Days (avg/wk)</option>';
+  html += '<option value="custom">Custom Dates…</option>';
   html += '</select></div>';
+  html += '<div id="vol-custom-dates" style="display:none;margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
+  html += '<label style="font-size:.78rem;color:var(--text2);">From</label><input type="date" id="vol-from" onchange="updateVolumeDashboard()" style="font-size:.78rem;">';
+  html += '<label style="font-size:.78rem;color:var(--text2);">To</label><input type="date" id="vol-to" onchange="updateVolumeDashboard()" style="font-size:.78rem;">';
+  html += '</div>';
   html += '<div style="font-size:.72rem;color:var(--text2);margin-bottom:8px;">Direct sets come from exercises that primarily target the muscle. <span style="color:var(--highlight);">Indirect sets</span> are stimulus-equivalents from exercises that hit the muscle as a secondary (e.g. chest/shoulder presses add indirect work to triceps; rows/pulldowns add indirect work to biceps). Indirect sets count at ~50% per convention. <strong style="color:var(--highlight2);">Hover (or tap) any bar section</strong> to see the exercises feeding it.</div>';
   // Color legend
   html += '<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:.68rem;margin-bottom:12px;padding:8px 10px;background:var(--card2);border-radius:6px;align-items:center;">';
@@ -8207,7 +8256,21 @@ function _updateVolumeDashboard() {
   if(!el) return;
   const rangeSel = document.getElementById('vol-range');
   const rangeKey = rangeSel ? rangeSel.value : 'thisweek';
-  const data = getVolumeForRange(rangeKey);
+  // Show/hide custom date pickers
+  const customRow = document.getElementById('vol-custom-dates');
+  if(customRow) customRow.style.display = rangeKey==='custom' ? 'flex' : 'none';
+
+  let data;
+  if(rangeKey === 'custom') {
+    const fromEl = document.getElementById('vol-from');
+    const toEl = document.getElementById('vol-to');
+    const fromStr = fromEl ? fromEl.value : '';
+    const toStr = toEl ? toEl.value : '';
+    if(!fromStr || !toStr) { el.innerHTML = '<div style="color:var(--text2);font-size:.85rem;">Select both From and To dates.</div>'; return; }
+    data = getVolumeForRange('custom:'+fromStr+':'+toStr);
+  } else {
+    data = getVolumeForRange(rangeKey);
+  }
   const vol = data.vol;
   const volEx = data.volEx;
   const wc = data.weekCount;
@@ -8215,9 +8278,10 @@ function _updateVolumeDashboard() {
   const pp = calcPushPullRatio(vol);
 
   // Build a tooltip body listing exercises for a muscle's direct/indirect bucket.
-  const buildExTooltip = (title, exMap, kind) => {
+  const buildExTooltip = (title, exMap, kind, totalSets) => {
     const entries = Object.entries(exMap||{}).sort((a,b)=>b[1]-a[1]);
     let body = '<strong>'+title+'</strong>';
+    if(typeof totalSets==='number') body += ' — <strong>'+totalSets+' sets total</strong>';
     if(kind==='indirect') body += '<div class="tip-section" style="color:var(--text2);font-size:.7rem;">Sets shown are weighted at 50% (the standard convention for secondary-muscle stimulus).</div>';
     if(isMulti) body += '<div class="tip-section" style="color:var(--text2);font-size:.7rem;">Totals across '+wc+' weeks. Bars show per-week average.</div>';
     if(!entries.length) {
@@ -8238,37 +8302,40 @@ function _updateVolumeDashboard() {
   Object.entries(VOLUME_TARGETS).forEach(([bp,targets]) => {
     const rawDirect = (vol[bp]||0) + (bp==='legs'?(vol['legs_hiit']||0):0);
     const rawIndirect = vol[bp+'_indirect']||0;
-    // For multi-week, show per-week average; for single week, raw totals.
     const direct = isMulti ? Math.round((rawDirect/wc)*10)/10 : rawDirect;
     const indirect = isMulti ? Math.round((rawIndirect/wc)*10)/10 : Math.round(rawIndirect*10)/10;
-    const totalStim = direct + indirect;
+    const totalStim = Math.round((direct + indirect)*10)/10;
+    // Use totalStim for the bar scale so the full stimulus is visible.
+    const totalPct = Math.min(100, (totalStim/targets.max)*100);
     const directPct = Math.min(100, (direct/targets.max)*100);
+    const indirectPct = indirect>0 ? Math.min(100-directPct, (indirect/targets.max)*100) : 0;
     let color='green';
     if(direct<targets.min && totalStim<targets.optimal) color='red';
     else if(direct>targets.max) color='red';
     else if(direct<targets.optimal) color='yellow';
     const label = bp.charAt(0).toUpperCase()+bp.slice(1);
-    const indirectLabel = indirect>0 ? ' <span style="color:var(--highlight);">+ '+indirect+' indirect</span>' : '';
     const perWkNote = isMulti ? '/wk avg' : '';
 
     const bpEx = volEx[bp] || {direct:{}, indirect:{}};
-    const directTip = buildExTooltip('Direct '+label+' exercises', bpEx.direct, 'direct');
-    const indirectTip = buildExTooltip('Indirect '+label+' stimulus', bpEx.indirect, 'indirect');
+    const directTip = buildExTooltip('Direct '+label+' exercises', bpEx.direct, 'direct', direct);
+    const indirectTip = buildExTooltip('Indirect '+label+' stimulus', bpEx.indirect, 'indirect', indirect);
 
-    html += '<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap;"><span style="font-weight:600;font-size:.85rem;">'+label+'</span><span style="font-size:.8rem;color:var(--text2);">'+direct+' direct'+perWkNote+indirectLabel+' <span style="opacity:.6;">(target: '+targets.min+'-'+targets.max+')</span></span></div>';
+    // Header shows total stimulus as the main number; breakdown in parentheses.
+    html += '<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap;"><span style="font-weight:600;font-size:.85rem;">'+label+'</span><span style="font-size:.8rem;color:var(--text2);"><strong style="color:var(--text);">'+totalStim+'</strong> total'+perWkNote+' <span style="opacity:.7;">('+direct+' direct'+(indirect>0?' + '+indirect+' indirect':'')+') (target: '+targets.min+'–'+targets.max+')</span></span></div>';
     html += '<div class="coach-bar-container" style="position:relative;overflow:visible;">';
-    html += '<div class="hover-tip coach-bar-fill '+color+'" tabindex="0" style="width:'+directPct+'%;">'+direct;
+    // Direct bar section
+    html += '<div class="hover-tip coach-bar-fill '+color+'" tabindex="0" style="width:'+directPct+'%;z-index:1;">'+direct;
     html += '<span class="info-body">'+directTip+'</span>';
     html += '</div>';
+    // Indirect bar section — always visible with striped fill and the indirect number inside
     if(indirect>0) {
-      const indirectWidth = Math.min(100-directPct, (indirect/targets.max)*100);
-      html += '<span class="hover-tip" tabindex="0" style="position:absolute;top:0;left:'+directPct+'%;height:100%;width:'+indirectWidth+'%;">';
+      html += '<span class="hover-tip" tabindex="0" style="position:absolute;top:0;left:'+directPct+'%;height:100%;width:'+indirectPct+'%;z-index:1;">';
       html += '<span style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,var(--highlight),var(--highlight) 4px,transparent 4px,transparent 8px);opacity:.55;border-radius:0 6px 6px 0;"></span>';
+      html += '<span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:.6rem;font-weight:700;color:var(--highlight);z-index:2;">'+indirect+'</span>';
       html += '<span class="info-body">'+indirectTip+'</span>';
       html += '</span>';
     }
     html += '</div>';
-    if(indirect>0) html += '<div style="font-size:.7rem;color:var(--text2);margin-top:2px;">Total stimulus ≈ '+(Math.round(totalStim*10)/10)+' sets'+perWkNote+' (direct + indirect)</div>';
     if(bp==='legs'&&(vol['legs_hiit']||0)>0) {
       const hiitAvg = isMulti ? Math.round(((vol['legs_hiit']||0)/wc)*10)/10 : (vol['legs_hiit']||0);
       html+='<div style="font-size:.72rem;color:var(--orange);margin-top:2px;">Includes ~'+hiitAvg+' Peloton fatigue-equivalent sets'+perWkNote+'</div>';
@@ -8336,7 +8403,11 @@ function renderRecovery() {
     '<div class="tip-section"><strong>Tap the gauge</strong> to see the exact point-by-point breakdown.</div>'
   );
   html += '<div class="coach-grid">';
-  html += '<div class="card" style="cursor:pointer;" onclick="openGradePopup(\''+recReadGpId+'\')"><div class="readiness-gauge"><div class="readiness-circle" style="background:conic-gradient('+readColor+' '+readiness*3.6+'deg,var(--input-bg) 0deg)"><span style="background:var(--card);width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;">'+readiness+'</span></div><div class="readiness-label">Readiness Score (0–100)'+readinessTip+' <span style="font-size:.65rem;color:var(--highlight);">tap for breakdown</span></div></div></div>';
+  html += '<div class="card" style="cursor:pointer;" onclick="openGradePopup(\''+recReadGpId+'\')">';
+  html += '<div class="readiness-gauge"><div class="readiness-circle" style="background:conic-gradient('+readColor+' '+readiness*3.6+'deg,var(--input-bg) 0deg)"><span style="background:var(--card);width:90px;height:90px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;">'+readiness+'</span></div>';
+  html += '<div class="readiness-label">Readiness Score <span style="font-size:.68rem;color:var(--text2);">'+readiness+' / 100</span></div></div>';
+  html += inlineBreakdown(readinessData.breakdown, 100, '0–100');
+  html += '</div>';
 
   if(acwr) {
     const acwrTip = infoTip(
@@ -8455,17 +8526,31 @@ function renderRecommendations() {
   recs.sort((a,b)=>a.priority-b.priority);
   if(!recs.length) html += '<div class="coach-alert success">Everything looks great! No immediate recommendations. Keep training consistently.</div>';
   else {
-    // Side-by-side grid layout; action options hidden behind a click.
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;">';
-    recs.forEach(r => {
-      html += '<div class="coach-alert '+r.type+'" style="margin-bottom:0;"><div class="alert-title">'+r.title+'</div>'+r.msg;
+    // Split into "positive / increase" (left column) and "warning / decrease" (right column).
+    const positiveTypes = new Set(['increase','volume_low']);
+    const leftRecs = recs.filter(r => positiveTypes.has(r.actionType));
+    const rightRecs = recs.filter(r => !positiveTypes.has(r.actionType));
+    const renderRecCard = r => {
+      let card = '<div class="coach-alert '+r.type+'" style="margin-bottom:8px;"><div class="alert-title">'+r.title+'</div>'+r.msg;
       if(r.actionType) {
-        html += '<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:.78rem;color:var(--blue);font-weight:700;list-style:none;user-select:none;">Show Options ▸</summary>';
-        html += buildActionOptions(r.actionType, r.actionData);
-        html += '</details>';
+        card += '<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:.78rem;color:var(--blue);font-weight:700;list-style:none;user-select:none;">Show Options ▸</summary>';
+        card += buildActionOptions(r.actionType, r.actionData);
+        card += '</details>';
       }
-      html += '</div>';
-    });
+      card += '</div>';
+      return card;
+    };
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">';
+    html += '<div>';
+    html += '<div style="font-weight:700;font-size:.82rem;color:var(--green);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);">Increase / Progress ('+(leftRecs.length||'none')+')</div>';
+    if(leftRecs.length) leftRecs.forEach(r => { html += renderRecCard(r); });
+    else html += '<div style="font-size:.78rem;color:var(--text2);">No increase recommendations right now.</div>';
+    html += '</div>';
+    html += '<div>';
+    html += '<div style="font-weight:700;font-size:.82rem;color:var(--orange);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);">Reduce / Fix ('+(rightRecs.length||'none')+')</div>';
+    if(rightRecs.length) rightRecs.forEach(r => { html += renderRecCard(r); });
+    else html += '<div style="font-size:.78rem;color:var(--text2);">No reduction or fix recommendations right now.</div>';
+    html += '</div>';
     html += '</div>';
   }
 
@@ -9215,6 +9300,9 @@ function renderTrainingMap() {
 
   function collectMuscleData(workouts) {
     const muscles = {};
+    const ensureMuscle = (m, type) => {
+      if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type,directEx:{},indirectEx:{}};
+    };
     workouts.forEach(w => {
       (w.exercises||[]).forEach(ex => {
         const name = resolveExerciseName(ex.name);
@@ -9222,33 +9310,28 @@ function renderTrainingMap() {
         const setCount = ws.length;
         const info = getMusclesForExercise(name);
         info.primary.forEach(m => {
-          if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type:'primary'};
+          ensureMuscle(m,'primary');
           muscles[m].sets += setCount;
           muscles[m].exercises.add(name);
+          muscles[m].directEx[name] = (muscles[m].directEx[name]||0) + setCount;
         });
         info.secondary.forEach(m => {
-          if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type:'secondary'};
-          muscles[m].sets += Math.round(setCount*0.5);
+          ensureMuscle(m,'secondary');
+          const secSets = Math.round(setCount*0.5);
+          muscles[m].sets += secSets;
           muscles[m].exercises.add(name+' (secondary)');
+          muscles[m].indirectEx[name] = (muscles[m].indirectEx[name]||0) + secSets;
         });
       });
-      // Peloton activation - fatigue-equivalent calculation
+      // Peloton activation
       if(w.peloton && w.peloton.watts) {
         const fSets = pelotonFatigueSets(w.peloton);
         if(fSets.primary>0||fSets.secondary>0) {
           const exLabel = 'Peloton '+(w.peloton.recovery?'Recovery':'HIIT')+' ('+w.peloton.watts+'W × '+(w.peloton.minutes||30)+'min)';
           const cyclingPrimary = ['Quads (Vastus)','Quads (Rectus Femoris)','Glutes'];
           const cyclingSecondary = ['Hamstrings','Gastrocnemius','Soleus','Glute Medius'];
-          cyclingPrimary.forEach(m => {
-            if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type:'primary'};
-            muscles[m].sets += fSets.primary;
-            muscles[m].exercises.add(exLabel);
-          });
-          cyclingSecondary.forEach(m => {
-            if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type:'secondary'};
-            muscles[m].sets += fSets.secondary;
-            muscles[m].exercises.add(exLabel+' (secondary)');
-          });
+          cyclingPrimary.forEach(m => { ensureMuscle(m,'primary'); muscles[m].sets+=fSets.primary; muscles[m].exercises.add(exLabel); muscles[m].directEx[exLabel]=(muscles[m].directEx[exLabel]||0)+fSets.primary; });
+          cyclingSecondary.forEach(m => { ensureMuscle(m,'secondary'); muscles[m].sets+=fSets.secondary; muscles[m].exercises.add(exLabel+' (secondary)'); muscles[m].indirectEx[exLabel]=(muscles[m].indirectEx[exLabel]||0)+fSets.secondary; });
         }
       }
     });
@@ -9352,13 +9435,29 @@ function renderTrainingMap() {
         const weeklyAvg = m.sets/weekDiv;
         const st = m.type==='primary' ? statusFor(weeklyAvg) : STATUS.good;
         const pct = Math.min(100, (weeklyAvg/BAR_SCALE)*100);
-        h += '<div style="margin-bottom:6px;">';
+        // Build hover tooltip showing direct and indirect exercises + sets.
+        const directEntries = Object.entries(m.directEx||{}).sort((a,b)=>b[1]-a[1]);
+        const indirectEntries = Object.entries(m.indirectEx||{}).sort((a,b)=>b[1]-a[1]);
+        const directTotal = directEntries.reduce((s,e)=>s+e[1],0);
+        const indirectTotal = indirectEntries.reduce((s,e)=>s+e[1],0);
+        let tipBody = '<strong>'+m.name+'</strong> — '+m.sets+' total sets'+(weekDiv>1?' (~'+weeklyAvg.toFixed(1)+'/wk)':'');
+        if(directEntries.length) {
+          tipBody += '<div class="tip-section"><strong>Direct ('+directTotal+' sets):</strong>';
+          directEntries.forEach(([ex,s]) => { tipBody += '<div class="ex-row"><span>'+escapeHtml(ex)+'</span><span class="ex-sets">'+s+'</span></div>'; });
+          tipBody += '</div>';
+        }
+        if(indirectEntries.length) {
+          tipBody += '<div class="tip-section"><strong>Indirect ('+indirectTotal+' sets at 50%):</strong>';
+          indirectEntries.forEach(([ex,s]) => { tipBody += '<div class="ex-row"><span>'+escapeHtml(ex)+'</span><span class="ex-sets">'+s+'</span></div>'; });
+          tipBody += '</div>';
+        }
+        h += '<div class="hover-tip" tabindex="0" style="margin-bottom:6px;">';
+        h += '<span class="info-body">'+tipBody+'</span>';
         h += '<div style="display:flex;justify-content:space-between;align-items:center;font-size:.78rem;margin-bottom:2px;gap:6px;flex-wrap:wrap;">';
         h += '<span style="flex:1;min-width:0;">'+m.name+' <span style="font-size:.62rem;font-weight:700;color:'+st.color+';padding:1px 5px;border-radius:3px;background:'+st.bg+';">'+st.label+'</span></span>';
         h += '<span style="color:var(--text2);font-size:.72rem;">'+m.sets+' sets'+(weekDiv>1?' (~'+weeklyAvg.toFixed(1)+'/wk)':'')+'</span>';
         h += '</div>';
         h += '<div class="coach-bar-container" style="height:10px;background:var(--input-bg);position:relative;">';
-        // Shade the "optimal" band (4–11 sets/wk) faintly so the standard is visible on every bar.
         const bandStart = (4/BAR_SCALE)*100;
         const bandEnd = (11/BAR_SCALE)*100;
         h += '<div style="position:absolute;top:0;bottom:0;left:'+bandStart+'%;width:'+(bandEnd-bandStart)+'%;background:rgba(46,204,113,.08);border-left:1px dashed rgba(46,204,113,.35);border-right:1px dashed rgba(46,204,113,.35);"></div>';
@@ -9385,8 +9484,12 @@ function renderTrainingMap() {
   html += '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">';
   html += '<div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:3px;">Time Range</label>';
   html += '<select id="tmap-range" onchange="updateTrainingMap()" style="min-width:130px;">';
-  html += '<option value="1">Today</option><option value="7" selected>This Week (Mon-Sun)</option><option value="7prev">Last Week (Mon-Sun)</option><option value="14">Last 2 Weeks (Mon-Sun)</option><option value="30">Last 30 Days</option><option value="90">Last 90 Days</option><option value="0">All Time</option>';
+  html += '<option value="1">Today</option><option value="7" selected>This Week (Mon-Sun)</option><option value="7prev">Last Week (Mon-Sun)</option><option value="14">Last 2 Weeks (Mon-Sun)</option><option value="30">Last 30 Days</option><option value="90">Last 90 Days</option><option value="0">All Time</option><option value="custom">Custom Dates…</option>';
   html += '</select></div>';
+  html += '<div id="tmap-custom-dates" style="display:none;align-items:center;gap:6px;">';
+  html += '<label style="font-size:.78rem;color:var(--text2);">From</label><input type="date" id="tmap-from" onchange="updateTrainingMap()" style="font-size:.78rem;">';
+  html += '<label style="font-size:.78rem;color:var(--text2);">To</label><input type="date" id="tmap-to" onchange="updateTrainingMap()" style="font-size:.78rem;">';
+  html += '</div>';
   html += '<div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:3px;">Filter Muscle</label>';
   html += '<select id="tmap-muscle" onchange="updateTrainingMap()" style="min-width:130px;">';
   html += '<option value="">All Muscles</option>';
@@ -9437,6 +9540,10 @@ function _doUpdateTrainingMap() {
   const muscleSel = document.getElementById('tmap-muscle');
   const rawRange = rangeSel ? rangeSel.value : '7';
   const isPrevWeek = rawRange === '7prev';
+  const isCustom = rawRange === 'custom';
+  // Show/hide custom date pickers
+  const customRow = document.getElementById('tmap-custom-dates');
+  if(customRow) customRow.style.display = isCustom ? 'flex' : 'none';
   const days = isPrevWeek ? 7 : (parseInt(rawRange)||0);
   const muscleFilterRaw = muscleSel ? muscleSel.value : '';
 
@@ -9525,7 +9632,17 @@ function _doUpdateTrainingMap() {
   let filtered;
   let gridStart = null; // for the day grid below
   let gridDays = days;
-  if(days===1 && !isPrevWeek) {
+  if(isCustom) {
+    const fromEl = document.getElementById('tmap-from');
+    const toEl = document.getElementById('tmap-to');
+    const fromStr = fromEl ? fromEl.value : '';
+    const toStr = toEl ? toEl.value : '';
+    if(!fromStr || !toStr) { el.innerHTML='<div class="card" style="padding:20px;color:var(--text2);text-align:center;">Select both From and To dates.</div>'; return; }
+    filtered = c.workouts.filter(w => w.date >= fromStr && w.date <= toStr);
+    const diffDays = daysBetween(fromStr, toStr)+1;
+    gridDays = Math.min(diffDays, 14);
+    if(diffDays <= 14) gridStart = new Date(fromStr+'T12:00:00');
+  } else if(days===1 && !isPrevWeek) {
     filtered = c.workouts.filter(w=>w.date===todayStr());
   } else if(days===0) {
     filtered = c.workouts;
@@ -9560,8 +9677,17 @@ function _doUpdateTrainingMap() {
     filtered = getRecentWorkouts(days);
   }
 
-  const rangeLabel = isPrevWeek?'Last Week (Mon-Sun)':days===1?'Today':days===7?'This Week (Mon-Sun)':days===14?'Last 2 Weeks (Mon-Sun)':days===0?'All Time':'Last '+days+' Days';
-  const weekDiv = isPrevWeek?1:days===1?1:days===0?Math.max(1,daysBetween(c.workouts[0]?.date||todayStr(),todayStr())/7):Math.max(1,days/7);
+  let rangeLabel, weekDiv;
+  if(isCustom) {
+    const fromStr = document.getElementById('tmap-from')?.value||'';
+    const toStr = document.getElementById('tmap-to')?.value||'';
+    const span = daysBetween(fromStr, toStr)+1;
+    rangeLabel = fromStr+' to '+toStr;
+    weekDiv = Math.max(1, span/7);
+  } else {
+    rangeLabel = isPrevWeek?'Last Week (Mon-Sun)':days===1?'Today':days===7?'This Week (Mon-Sun)':days===14?'Last 2 Weeks (Mon-Sun)':days===0?'All Time':'Last '+days+' Days';
+    weekDiv = isPrevWeek?1:days===1?1:days===0?Math.max(1,daysBetween(c.workouts[0]?.date||todayStr(),todayStr())/7):Math.max(1,days/7);
+  }
 
   let html = '';
 
