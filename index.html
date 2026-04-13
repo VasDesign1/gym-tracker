@@ -7267,14 +7267,60 @@ function calcSpinalLoading(days) {
   return {score:score.toFixed(1),level};
 }
 
-function calcPushPullRatio() {
-  const vol = getCurrentWeekVolume();
+function calcPushPullRatio(volOverride) {
+  const vol = volOverride || getCurrentWeekVolume();
   let push=0, pull=0;
   Object.entries(vol).forEach(([bp,sets]) => {
     if(PUSH_BODYPARTS.has(bp)) push+=sets;
     if(PULL_BODYPARTS.has(bp)) pull+=sets;
   });
   return {push,pull,ratio:pull>0?(push/pull).toFixed(2):'N/A'};
+}
+
+// Merge multiple weeklyVolume objects (summing sets across weeks).
+function mergeWeeklyVolumes(vols) {
+  const out = {};
+  vols.forEach(v => { if(!v) return; Object.entries(v).forEach(([k,val]) => { out[k] = (out[k]||0) + val; }); });
+  return out;
+}
+function mergeWeeklyVolumesEx(vols) {
+  const out = {};
+  vols.forEach(vex => {
+    if(!vex) return;
+    Object.entries(vex).forEach(([bp, buckets]) => {
+      if(!out[bp]) out[bp] = {direct:{}, indirect:{}};
+      Object.entries(buckets.direct||{}).forEach(([ex,s]) => { out[bp].direct[ex] = (out[bp].direct[ex]||0) + s; });
+      Object.entries(buckets.indirect||{}).forEach(([ex,s]) => { out[bp].indirect[ex] = (out[bp].indirect[ex]||0) + s; });
+    });
+  });
+  return out;
+}
+
+// Returns {vol, volEx, weekCount, label} for a given range key used by the Volume Dashboard selector.
+function getVolumeForRange(rangeKey) {
+  const c = buildCache();
+  if(rangeKey === 'lastweek') {
+    const thisMonStart = getMondayWeekStart(new Date());
+    const prevMon = new Date(thisMonStart); prevMon.setDate(prevMon.getDate()-7);
+    const wk = mondayWeekKey(prevMon);
+    return {vol: c.weeklyVolume[wk]||{}, volEx: c.weeklyVolumeEx[wk]||{}, weekCount:1, label:'Last Week (Mon-Sun)'};
+  }
+  if(rangeKey === '2weeks') {
+    const thisMonStart = getMondayWeekStart(new Date());
+    const prevMon = new Date(thisMonStart); prevMon.setDate(prevMon.getDate()-7);
+    const wk1 = mondayWeekKey(thisMonStart);
+    const wk2 = mondayWeekKey(prevMon);
+    return {vol: mergeWeeklyVolumes([c.weeklyVolume[wk1], c.weeklyVolume[wk2]]), volEx: mergeWeeklyVolumesEx([c.weeklyVolumeEx[wk1], c.weeklyVolumeEx[wk2]]), weekCount:2, label:'Last 2 Weeks (avg/wk)'};
+  }
+  if(rangeKey === '30days') {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-30);
+    const cutStr = formatDate(cutoff);
+    const weeks = Object.keys(c.weeklyVolume).filter(wk => wk >= cutStr).sort();
+    return {vol: mergeWeeklyVolumes(weeks.map(wk=>c.weeklyVolume[wk])), volEx: mergeWeeklyVolumesEx(weeks.map(wk=>c.weeklyVolumeEx[wk])), weekCount:Math.max(1,weeks.length), label:'Last 30 Days (avg/wk)'};
+  }
+  // Default: this week
+  const wk = mondayWeekKey(new Date());
+  return {vol: c.weeklyVolume[wk]||{}, volEx: c.weeklyVolumeEx[wk]||{}, weekCount:1, label:'This Week (Mon-Sun)'};
 }
 
 function getAllPRs() {
@@ -8107,12 +8153,18 @@ function renderOverload() {
 }
 
 function renderVolumeDashboard() {
-  const vol = getCurrentWeekVolume();
-  const volEx = getCurrentWeekVolumeEx();
-  const pp = calcPushPullRatio();
-  let html = '<div class="coach-section"><h3>This Week\'s Volume (Sets per Muscle Group)</h3>';
+  let html = '<div class="coach-section">';
+  // Time range selector
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">';
+  html += '<h3 style="margin:0;">Volume (Sets per Muscle Group)</h3>';
+  html += '<select id="vol-range" onchange="updateVolumeDashboard()" style="min-width:160px;">';
+  html += '<option value="thisweek" selected>This Week (Mon-Sun)</option>';
+  html += '<option value="lastweek">Last Week (Mon-Sun)</option>';
+  html += '<option value="2weeks">Last 2 Weeks (avg/wk)</option>';
+  html += '<option value="30days">Last 30 Days (avg/wk)</option>';
+  html += '</select></div>';
   html += '<div style="font-size:.72rem;color:var(--text2);margin-bottom:8px;">Direct sets come from exercises that primarily target the muscle. <span style="color:var(--highlight);">Indirect sets</span> are stimulus-equivalents from exercises that hit the muscle as a secondary (e.g. chest/shoulder presses add indirect work to triceps; rows/pulldowns add indirect work to biceps). Indirect sets count at ~50% per convention. <strong style="color:var(--highlight2);">Hover (or tap) any bar section</strong> to see the exercises feeding it.</div>';
-  // Color legend so the meaning of each bar color is obvious at a glance.
+  // Color legend
   html += '<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:.68rem;margin-bottom:12px;padding:8px 10px;background:var(--card2);border-radius:6px;align-items:center;">';
   html += '<span style="color:var(--text2);font-weight:600;margin-right:2px;">Bar colors:</span>';
   html += '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:10px;border-radius:2px;background:var(--green);"></span><span style="color:var(--green);font-weight:700;">GREEN</span> <span style="color:var(--text2);">inside target (min–max)</span></span>';
@@ -8120,14 +8172,34 @@ function renderVolumeDashboard() {
   html += '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:10px;border-radius:2px;background:#e74c3c;"></span><span style="color:#e74c3c;font-weight:700;">RED</span> <span style="color:var(--text2);">below min or above max</span></span>';
   html += '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:10px;border-radius:2px;background:repeating-linear-gradient(45deg,var(--highlight),var(--highlight) 3px,transparent 3px,transparent 6px);"></span><span style="color:var(--highlight);font-weight:700;">STRIPED</span> <span style="color:var(--text2);">indirect stimulus</span></span>';
   html += '</div>';
+  html += '<div id="vol-results"></div>';
+  html += '</div>';
+  setTimeout(_updateVolumeDashboard, 50);
+  return html;
+}
+
+window.updateVolumeDashboard = function() { _updateVolumeDashboard(); };
+
+function _updateVolumeDashboard() {
+  const el = document.getElementById('vol-results');
+  if(!el) return;
+  const rangeSel = document.getElementById('vol-range');
+  const rangeKey = rangeSel ? rangeSel.value : 'thisweek';
+  const data = getVolumeForRange(rangeKey);
+  const vol = data.vol;
+  const volEx = data.volEx;
+  const wc = data.weekCount;
+  const isMulti = wc > 1;
+  const pp = calcPushPullRatio(vol);
 
   // Build a tooltip body listing exercises for a muscle's direct/indirect bucket.
   const buildExTooltip = (title, exMap, kind) => {
     const entries = Object.entries(exMap||{}).sort((a,b)=>b[1]-a[1]);
     let body = '<strong>'+title+'</strong>';
     if(kind==='indirect') body += '<div class="tip-section" style="color:var(--text2);font-size:.7rem;">Sets shown are weighted at 50% (the standard convention for secondary-muscle stimulus).</div>';
+    if(isMulti) body += '<div class="tip-section" style="color:var(--text2);font-size:.7rem;">Totals across '+wc+' weeks. Bars show per-week average.</div>';
     if(!entries.length) {
-      body += '<div class="tip-section" style="color:var(--text2);">No '+kind+' exercises logged this week.</div>';
+      body += '<div class="tip-section" style="color:var(--text2);">No '+kind+' exercises logged in this period.</div>';
     } else {
       body += '<div class="tip-section">';
       entries.forEach(([exName, sets]) => {
@@ -8139,11 +8211,15 @@ function renderVolumeDashboard() {
     return body;
   };
 
+  let html = '<h4 style="color:var(--blue);font-size:.9rem;margin:0 0 10px;">'+data.label+'</h4>';
+
   Object.entries(VOLUME_TARGETS).forEach(([bp,targets]) => {
-    const direct = (vol[bp]||0) + (bp==='legs'?(vol['legs_hiit']||0):0);
-    const indirect = Math.round((vol[bp+'_indirect']||0) * 10) / 10;
+    const rawDirect = (vol[bp]||0) + (bp==='legs'?(vol['legs_hiit']||0):0);
+    const rawIndirect = vol[bp+'_indirect']||0;
+    // For multi-week, show per-week average; for single week, raw totals.
+    const direct = isMulti ? Math.round((rawDirect/wc)*10)/10 : rawDirect;
+    const indirect = isMulti ? Math.round((rawIndirect/wc)*10)/10 : Math.round(rawIndirect*10)/10;
     const totalStim = direct + indirect;
-    const pct = Math.min(100, (totalStim/targets.max)*100);
     const directPct = Math.min(100, (direct/targets.max)*100);
     let color='green';
     if(direct<targets.min && totalStim<targets.optimal) color='red';
@@ -8151,62 +8227,66 @@ function renderVolumeDashboard() {
     else if(direct<targets.optimal) color='yellow';
     const label = bp.charAt(0).toUpperCase()+bp.slice(1);
     const indirectLabel = indirect>0 ? ' <span style="color:var(--highlight);">+ '+indirect+' indirect</span>' : '';
+    const perWkNote = isMulti ? '/wk avg' : '';
 
     const bpEx = volEx[bp] || {direct:{}, indirect:{}};
-    const directTip = buildExTooltip('Direct '+label+' exercises this week', bpEx.direct, 'direct');
-    const indirectTip = buildExTooltip('Indirect '+label+' stimulus this week', bpEx.indirect, 'indirect');
+    const directTip = buildExTooltip('Direct '+label+' exercises', bpEx.direct, 'direct');
+    const indirectTip = buildExTooltip('Indirect '+label+' stimulus', bpEx.indirect, 'indirect');
 
-    html += '<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap;"><span style="font-weight:600;font-size:.85rem;">'+label+'</span><span style="font-size:.8rem;color:var(--text2);">'+direct+' direct'+indirectLabel+' <span style="opacity:.6;">(target: '+targets.min+'-'+targets.max+')</span></span></div>';
+    html += '<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap;"><span style="font-weight:600;font-size:.85rem;">'+label+'</span><span style="font-size:.8rem;color:var(--text2);">'+direct+' direct'+perWkNote+indirectLabel+' <span style="opacity:.6;">(target: '+targets.min+'-'+targets.max+')</span></span></div>';
     html += '<div class="coach-bar-container" style="position:relative;overflow:visible;">';
-    // Direct bar is now a hover target; tooltip lists the exercises contributing to it.
     html += '<div class="hover-tip coach-bar-fill '+color+'" tabindex="0" style="width:'+directPct+'%;">'+direct;
     html += '<span class="info-body">'+directTip+'</span>';
     html += '</div>';
     if(indirect>0) {
       const indirectWidth = Math.min(100-directPct, (indirect/targets.max)*100);
-      // Indirect stripe gets its own hover target, nested so opacity only hits the visual layer.
       html += '<span class="hover-tip" tabindex="0" style="position:absolute;top:0;left:'+directPct+'%;height:100%;width:'+indirectWidth+'%;">';
       html += '<span style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,var(--highlight),var(--highlight) 4px,transparent 4px,transparent 8px);opacity:.55;border-radius:0 6px 6px 0;"></span>';
       html += '<span class="info-body">'+indirectTip+'</span>';
       html += '</span>';
     }
     html += '</div>';
-    if(indirect>0) html += '<div style="font-size:.7rem;color:var(--text2);margin-top:2px;">Total stimulus ≈ '+(Math.round(totalStim*10)/10)+' sets (direct + indirect)</div>';
-    if(bp==='legs'&&(vol['legs_hiit']||0)>0) html+='<div style="font-size:.72rem;color:var(--orange);margin-top:2px;">Includes ~'+(vol['legs_hiit']||0)+' Peloton fatigue-equivalent sets</div>';
+    if(indirect>0) html += '<div style="font-size:.7rem;color:var(--text2);margin-top:2px;">Total stimulus ≈ '+(Math.round(totalStim*10)/10)+' sets'+perWkNote+' (direct + indirect)</div>';
+    if(bp==='legs'&&(vol['legs_hiit']||0)>0) {
+      const hiitAvg = isMulti ? Math.round(((vol['legs_hiit']||0)/wc)*10)/10 : (vol['legs_hiit']||0);
+      html+='<div style="font-size:.72rem;color:var(--orange);margin-top:2px;">Includes ~'+hiitAvg+' Peloton fatigue-equivalent sets'+perWkNote+'</div>';
+    }
     html += '</div>';
   });
 
-  // Ratios
+  // Ratios — use the same vol data (which may span multiple weeks).
+  // For push:pull, divide by weekCount to get per-week average when multi-week.
+  const ppAvg = isMulti ? calcPushPullRatio(Object.fromEntries(Object.entries(vol).map(([k,v])=>[k,v/wc]))) : pp;
   const pushPullTip = infoTip(
-    '<div class="tip-section"><strong>What it is:</strong> Weekly push sets (chest + shoulders + triceps) divided by pull sets (back + biceps).</div>'+
-    '<div class="tip-section"><strong>Why it matters:</strong> Pressing pulls the shoulders forward; rowing pulls them back. When push dominates, the rear delts and mid-back undertrain, posture collapses forward, and the rotator cuff takes on work it was not built for — leading to impingement, anterior shoulder pain, and upper-back tightness.</div>'+
-    '<div class="tip-section"><strong>Target:</strong> 0.8–1.2 (ideally slightly pull-dominant, i.e. ratio &lt; 1). &gt;1.3 push-dominant, add rows / face pulls. &gt;1.5 red flag.</div>'+
-    '<div class="tip-section"><strong>How to fix it:</strong> For every pushing set, aim for at least one pulling set. Face pulls, rear delt flies, and rows are the fastest way to rebalance.</div>'
+    '<div class="tip-section"><strong>What it is:</strong> Push sets (chest + shoulders + triceps) ÷ pull sets (back + biceps).</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Pressing pulls the shoulders forward; rowing pulls them back. Push-dominant → impingement, anterior shoulder pain, and upper-back tightness.</div>'+
+    '<div class="tip-section"><strong>Target:</strong> 0.8–1.2 (slightly pull-dominant). &gt;1.3 push-dominant, add rows / face pulls.</div>'+
+    '<div class="tip-section"><strong>How to fix:</strong> Add rows, face pulls, or rear delt flies. Aim ≥1 pull set per push set.</div>'
   );
   const quadHamTip = infoTip(
-    '<div class="tip-section"><strong>What it is:</strong> Quad-dominant sets (squats, leg press, leg extension) divided by hamstring-dominant sets (leg curls, RDLs).</div>'+
-    '<div class="tip-section"><strong>Why it matters:</strong> Quads and hamstrings are antagonists stabilising the knee. Hamstrings are almost always under-trained because squats and presses don\'t load them in a lengthened position. Weak/short hams = higher ACL and hamstring-strain risk, especially for anyone who sprints or cycles.</div>'+
-    '<div class="tip-section"><strong>Target:</strong> 1.5–2.0 quad:ham is typical for recreational lifters. Athletes who sprint/jump should push closer to 1:1. Anything &gt; 3:1 is a ham-strain waiting to happen.</div>'+
-    '<div class="tip-section"><strong>How to fix it:</strong> Add lying or seated leg curls, Romanian deadlifts, or good-mornings. 2–4 dedicated ham sets per week is usually enough.</div>'
+    '<div class="tip-section"><strong>What it is:</strong> Quad-dominant sets (squats, leg press, leg extension) ÷ hamstring sets (leg curls, RDLs).</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Hams stabilise the knee; weak hams = higher ACL and strain risk.</div>'+
+    '<div class="tip-section"><strong>Target:</strong> 1.5–2.0 quad:ham. Athletes who sprint should push closer to 1:1.</div>'+
+    '<div class="tip-section"><strong>How to fix:</strong> Add lying/seated leg curls, Romanian deadlifts, or good-mornings.</div>'
   );
   html += '<div class="coach-grid" style="margin-top:16px;">';
-  html += '<div class="card"><h3>Push : Pull Ratio'+pushPullTip+'</h3><div class="coach-metric"><span class="cm-label">Push sets</span><span class="cm-value">'+pp.push+'</span></div><div class="coach-metric"><span class="cm-label">Pull sets</span><span class="cm-value">'+pp.pull+'</span></div><div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value" style="color:'+(pp.push>0&&pp.pull>0&&pp.push/pp.pull>1.3?'var(--orange)':'var(--green)')+'">'+pp.ratio+'</span></div><div style="font-size:.75rem;color:var(--text2);margin-top:8px;">Ideal: 0.8-1.2 (slightly pull-dominant)</div></div>';
+  html += '<div class="card"><h3>Push : Pull Ratio'+pushPullTip+'</h3><div class="coach-metric"><span class="cm-label">Push sets</span><span class="cm-value">'+Math.round(ppAvg.push)+'</span></div><div class="coach-metric"><span class="cm-label">Pull sets</span><span class="cm-value">'+Math.round(ppAvg.pull)+'</span></div><div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value" style="color:'+(ppAvg.push>0&&ppAvg.pull>0&&ppAvg.push/ppAvg.pull>1.3?'var(--orange)':'var(--green)')+'">'+ppAvg.ratio+'</span></div><div style="font-size:.75rem;color:var(--text2);margin-top:8px;">Ideal: 0.8-1.2 (slightly pull-dominant)'+(isMulti?' — showing per-week avg':'')+'</div></div>';
 
-  // Quad:Ham estimate
+  // Quad:Ham estimate (from vol data, not separate getRecentWorkouts call)
   const quadEx = ['Leg Extension','Squat','Smith Machine Squat','Leg Press'];
   const hamEx = ['Seated Hamstring Curl','Lying Hamstring Curl'];
   let quadSets=0, hamSets=0;
-  getRecentWorkouts(7).forEach(w=>{
-    (w.exercises||[]).forEach(ex=>{
-      const n=resolveExerciseName(ex.name);
-      const ws=getWorkingSetsFromExercise(ex);
-      if(quadEx.some(q=>n.toLowerCase().includes(q.toLowerCase()))) quadSets+=ws.length;
-      if(hamEx.some(q=>n.toLowerCase().includes(q.toLowerCase()))) hamSets+=ws.length;
-    });
+  // Scan the exercise-level vol data for quad/ham exercises.
+  const legsEx = volEx['legs'] || {direct:{}};
+  Object.entries(legsEx.direct||{}).forEach(([exName,sets]) => {
+    if(quadEx.some(q=>exName.toLowerCase().includes(q.toLowerCase()))) quadSets+=sets;
+    if(hamEx.some(q=>exName.toLowerCase().includes(q.toLowerCase()))) hamSets+=sets;
   });
-  html += '<div class="card"><h3>Quad : Hamstring'+quadHamTip+'</h3><div class="coach-metric"><span class="cm-label">Quad sets</span><span class="cm-value">'+quadSets+'</span></div><div class="coach-metric"><span class="cm-label">Hamstring sets</span><span class="cm-value">'+hamSets+'</span></div><div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value">'+(hamSets>0?(quadSets/hamSets).toFixed(1):'N/A')+'</span></div><div style="font-size:.75rem;color:var(--text2);margin-top:8px;">Ideal: 1.5-2.0 quad-to-ham</div></div>';
-  html += '</div></div>';
-  return html;
+  if(isMulti) { quadSets = Math.round(quadSets/wc); hamSets = Math.round(hamSets/wc); }
+  html += '<div class="card"><h3>Quad : Hamstring'+quadHamTip+'</h3><div class="coach-metric"><span class="cm-label">Quad sets</span><span class="cm-value">'+quadSets+'</span></div><div class="coach-metric"><span class="cm-label">Hamstring sets</span><span class="cm-value">'+hamSets+'</span></div><div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value">'+(hamSets>0?(quadSets/hamSets).toFixed(1):'N/A')+'</span></div><div style="font-size:.75rem;color:var(--text2);margin-top:8px;">Ideal: 1.5-2.0 quad-to-ham'+(isMulti?' — showing per-week avg':'')+'</div></div>';
+  html += '</div>';
+
+  el.innerHTML = html;
 }
 
 function renderRecovery() {
