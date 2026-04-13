@@ -9240,7 +9240,19 @@ function renderReports() {
   const rangeLabel = days===0?'All Time':('Last '+days+' Days');
   const streak = getStreak();
 
-  let html = '<div class="coach-section"><h3>Report: '+rangeLabel+' ('+filtered.length+' sessions)</h3>';
+  let html = '<div class="coach-section">';
+  // Scoring method selector for reports
+  const curMethod = getScoringMethod();
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">';
+  html += '<h3 style="margin:0;">Report: '+rangeLabel+' ('+filtered.length+' sessions)</h3>';
+  html += '<div><label style="font-size:.78rem;color:var(--text2);display:block;margin-bottom:3px;">Scoring Method</label>';
+  html += '<select onchange="window.setScoringMethodAndRefresh(this.value)" style="min-width:160px;">';
+  Object.entries(SCORING_METHODS).forEach(([key,m]) => {
+    html += '<option value="'+key+'"'+(curMethod===key?' selected':'')+'>'+m.short+'</option>';
+  });
+  html += '</select></div></div>';
+  const mInfo = SCORING_METHODS[curMethod]||SCORING_METHODS.optionA;
+  html += '<div style="font-size:.72rem;color:var(--text2);padding:8px 10px;background:var(--card2);border-radius:6px;margin-bottom:12px;"><strong style="color:var(--blue);">'+mInfo.name+'</strong> — '+mInfo.desc+'</div>';
   html += '<div class="coach-grid">';
 
   // Period stats
@@ -9270,7 +9282,7 @@ function renderReports() {
 
   // Day-of-week performance with explanations (Monday-first order)
   html += '<div class="card"><h3>Performance by Day of Week ('+rangeLabel+')</h3>';
-  html += '<p style="font-size:.78rem;color:var(--text2);margin-bottom:12px;">Grade is based on: progressive overload (+0.4/exercise), rep increases (+0.2), set consistency (+0.2), exercise count (+0.3-0.5), cardio (+0.3). Penalties: steep rep drop-off (-0.5/exercise). Base score: 6.0.</p>';
+  html += '<p style="font-size:.78rem;color:var(--text2);margin-bottom:12px;">Grades use the <strong>'+mInfo.name+'</strong> scoring method. Change the method above to compare.</p>';
   const DOW_MON_FIRST = [1,2,3,4,5,6,0]; // Mon, Tue, Wed, Thu, Fri, Sat, Sun
   for(const d of DOW_MON_FIRST) {
     const dayWorkouts = filtered.filter(w=>new Date(w.date+'T12:00:00').getDay()===d);
@@ -10548,6 +10560,13 @@ window.setScoringMethod = function(m) {
   // Re-analyze the selected session.
   const ss = document.getElementById('coach-session-select');
   if(ss) coachAnalyzeSession(ss.value);
+};
+// Same as above but re-renders the entire reports panel (since reports has many grades).
+window.setScoringMethodAndRefresh = function(m) {
+  setScoringMethod(m);
+  _coachCache = null;
+  const el = document.getElementById('coach-content');
+  if(el) { el.innerHTML = renderReports(); initCoachCharts('reports'); }
 };
 
 window.initCoachTab = function() {
