@@ -553,6 +553,8 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 .info-tip:hover{background:var(--highlight);color:#fff;border-color:var(--highlight);}
 /* Generic hover wrapper used by elements like volume bar sections to show a tooltip on hover. */
 .hover-tip{position:relative;cursor:help;}
+/* When hovered, elevate above all sibling bars so the fixed tooltip isn't trapped behind them. */
+.hover-tip:hover,.hover-tip:focus,.hover-tip:focus-within{z-index:600;}
 /* Shared tooltip body: fixed-positioned, centered in viewport so it's always fully readable on any screen size. */
 .info-tip > .info-body,
 .hover-tip > .info-body{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(380px,92vw);max-height:80vh;overflow-y:auto;background:var(--card);border:2px solid var(--highlight);border-radius:10px;padding:14px 16px;font-size:.78rem;font-weight:400;color:var(--text);text-align:left;line-height:1.5;z-index:500;box-shadow:0 20px 60px rgba(0,0,0,.85);white-space:normal;pointer-events:none;}
@@ -7379,7 +7381,7 @@ function gradeSession(workout) {
   let runningScore = 6;
   breakdown.push({text:'Base score',pts:6,running:6});
 
-  let overloadCount=0, dropoffCount=0, topRangeCount=0, totalEx=0, consistentCount=0, repOverloadCount=0;
+  let overloadCount=0, dropoffCount=0, topRangeCount=0, totalEx=0, consistentCount=0, repOverloadCount=0, exWithPrev=0;
   exercises.forEach(ex => {
     const name = resolveExerciseName(ex.name);
     const ws = getWorkingSetsFromExercise(ex);
@@ -7393,6 +7395,7 @@ function gradeSession(workout) {
 
     // Progressive overload (weight)
     if(prev) {
+      exWithPrev++;
       const curMax = Math.max(...ws.map(s=>s.kg*mult));
       const prevMax = prev.maxKg*prev.mult;
       if(curMax>prevMax) {
@@ -7441,13 +7444,14 @@ function gradeSession(workout) {
     exBreakdowns.push({name, pts:exPts, sets:ws.map(s=>s.kg+'kg x '+s.reps)});
   });
 
-  // Show missed-point rows for bonus categories the user could have earned but didn't.
-  // Use 'missed' string for pts so the popup renderer can show them in orange.
-  let missedPts = 0;
-  const missedItems = [];
-  if(overloadCount===0) { missedPts+=0.4; missedItems.push('weight increase (+0.4/exercise)'); breakdown.push({text:'No weight increase on any exercise',pts:'missed +0.4/ex',running:runningScore}); }
-  if(repOverloadCount===0) { missedPts+=0.2; missedItems.push('rep increase (+0.2/exercise)'); breakdown.push({text:'No rep increase at same/higher weight',pts:'missed +0.2/ex',running:runningScore}); }
-  if(consistentCount===0) { missedPts+=0.2; missedItems.push('set consistency (+0.2/exercise)'); breakdown.push({text:'No set-consistency bonus (need stddev <1.5, 3+ sets)',pts:'missed +0.2/ex',running:runningScore}); }
+  // Show missed-point rows with actual TOTALS so the user sees exactly where the gap to 10 comes from.
+  // Weight/rep/consistency are per-exercise, so the missed total depends on how many exercises qualified.
+  const missedWeight = (exWithPrev - overloadCount) * 0.4;
+  const missedReps = (exWithPrev - repOverloadCount) * 0.2;
+  const missedConsistency = (totalEx - consistentCount) * 0.2;
+  if(missedWeight > 0) breakdown.push({text:(exWithPrev-overloadCount)+' of '+exWithPrev+' exercises had no weight increase',pts:'missed +'+missedWeight.toFixed(1),running:runningScore});
+  if(missedReps > 0) breakdown.push({text:(exWithPrev-repOverloadCount)+' of '+exWithPrev+' exercises had no rep increase',pts:'missed +'+missedReps.toFixed(1),running:runningScore});
+  if(missedConsistency > 0) breakdown.push({text:(totalEx-consistentCount)+' of '+totalEx+' exercises missed consistency bonus',pts:'missed +'+missedConsistency.toFixed(1),running:runningScore});
 
   // Exercise count bonus
   if(totalEx>=4) {
@@ -9428,10 +9432,17 @@ function renderTrainingMap() {
       const avgWeekly = present.length ? totalWeekly/present.length : 0;
       const st = present.length ? statusFor(avgWeekly) : STATUS.skipped;
       const shortLabel = REGION_SHORT[region] || region;
-      // Map region name to the muscle-filter dropdown group value so clicking the tile filters to that region.
-      const regionToFilter = {'Chest':'group:Chest','Shoulders':'group:Shoulders','Back':'group:Back','Biceps':'group:Biceps','Triceps':'group:Triceps','Quads':'group:Legs','Glutes & Hips':'group:Legs','Hamstrings':'group:Legs','Calves':'group:Legs','Core':'group:Core'};
-      const filterVal = regionToFilter[region]||'';
-      h += '<div title="Click to filter: '+region+'" onclick="(function(){var s=document.getElementById(\'tmap-muscle\');if(s){s.value=\''+filterVal+'\';updateTrainingMap();}})()" style="padding:5px 2px;background:'+st.bg+';border:1px solid '+st.color+';border-radius:5px;text-align:center;min-width:0;overflow:hidden;cursor:pointer;">';
+      // Build a small popup body listing each muscle in the region with sets.
+      let tileTip = '<strong>'+region+'</strong> — avg '+avgWeekly.toFixed(1)+' sets/wk · '+st.label;
+      present.forEach(mn => {
+        const md = muscles[mn];
+        const wkAvg = (md.sets/weekDiv).toFixed(1);
+        const mSt = md.type==='primary' ? statusFor(md.sets/weekDiv) : STATUS.good;
+        tileTip += '<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:.72rem;border-bottom:1px solid rgba(255,255,255,.05);"><span>'+mn+'</span><span style="color:'+mSt.color+';font-weight:700;">'+wkAvg+'/wk · '+mSt.label+'</span></div>';
+      });
+      if(!present.length) tileTip += '<div style="color:var(--text2);font-size:.72rem;padding:4px 0;">No muscles trained in this region.</div>';
+      h += '<div class="info-tip" tabindex="0" style="width:auto;height:auto;border-radius:5px;margin:0;padding:5px 2px;background:'+st.bg+';border:1px solid '+st.color+';text-align:center;min-width:0;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;">';
+      h += '<span class="info-body" style="width:min(320px,90vw);">'+tileTip+'</span>';
       h += '<div style="font-size:.62rem;color:var(--text);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+shortLabel+'</div>';
       h += '<div style="font-size:.95rem;font-weight:800;color:'+st.color+';line-height:1.1;margin-top:1px;">'+avgWeekly.toFixed(1)+'</div>';
       h += '<div style="font-size:.52rem;color:'+st.color+';font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+st.label+'</div>';
@@ -9469,7 +9480,7 @@ function renderTrainingMap() {
         h += '</div>';
         // Click-to-expand exercise detail (replaces hover tooltip).
         if(hasDetail) {
-          h += '<details style="margin-top:2px;"><summary style="cursor:pointer;font-size:.62rem;color:var(--highlight);font-weight:600;list-style:none;user-select:none;">'+m.exercises.size+' exercises — click for breakdown ▸</summary>';
+          h += '<details style="margin-top:2px;"><summary style="cursor:pointer;font-size:.62rem;color:var(--highlight);font-weight:600;list-style:none;user-select:none;">'+m.exercises.length+' exercises — click for breakdown ▸</summary>';
           h += '<div style="padding:6px 8px;margin-top:3px;background:var(--card2);border-radius:6px;font-size:.7rem;">';
           if(directEntries.length) {
             h += '<div style="font-weight:700;color:var(--green);margin-bottom:3px;">Direct ('+directTotal+' sets)</div>';
