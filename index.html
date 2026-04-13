@@ -9430,35 +9430,14 @@ function renderTrainingMap() {
       const avgWeekly = present.length ? totalWeekly/present.length : 0;
       const st = present.length ? statusFor(avgWeekly) : STATUS.skipped;
       const shortLabel = REGION_SHORT[region] || region;
-      // Build a small popup body listing each muscle in the region with sets.
-      let tileTip = '<strong>'+region+'</strong> — avg '+avgWeekly.toFixed(1)+' sets/wk · '+st.label;
-      present.forEach(mn => {
-        const md = muscles[mn];
-        const wkAvg = (md.sets/weekDiv).toFixed(1);
-        const mSt = md.type==='primary' ? statusFor(md.sets/weekDiv) : STATUS.good;
-        tileTip += '<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08);">';
-        tileTip += '<div style="display:flex;justify-content:space-between;font-size:.74rem;font-weight:700;"><span>'+mn+'</span><span style="color:'+mSt.color+';">'+wkAvg+'/wk · '+mSt.label+'</span></div>';
-        // Show exercises feeding this muscle.
-        const dEntries = Object.entries(md.directEx||{}).sort((a,b)=>b[1]-a[1]);
-        const iEntries = Object.entries(md.indirectEx||{}).sort((a,b)=>b[1]-a[1]);
-        if(dEntries.length) {
-          dEntries.forEach(([ex,s]) => { tileTip += '<div style="font-size:.66rem;display:flex;justify-content:space-between;padding:0 0 0 8px;color:var(--text2);"><span>'+ex+'</span><span style="color:var(--green);font-weight:600;">'+s+' sets</span></div>'; });
-        }
-        if(iEntries.length) {
-          iEntries.forEach(([ex,s]) => { tileTip += '<div style="font-size:.66rem;display:flex;justify-content:space-between;padding:0 0 0 8px;color:var(--text2);"><span>'+ex+' (indirect)</span><span style="color:var(--highlight);font-weight:600;">'+s+' sets</span></div>'; });
-        }
-        tileTip += '</div>';
-      });
-      if(!present.length) tileTip += '<div style="color:var(--text2);font-size:.72rem;padding:4px 0;">No muscles trained in this region.</div>';
-      h += '<div class="info-tip" tabindex="0" style="width:auto;height:auto;border-radius:5px;margin:0;padding:5px 2px;background:'+st.bg+';border:1px solid '+st.color+';text-align:center;min-width:0;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;">';
-      h += '<span class="info-body" style="width:min(320px,90vw);">'+tileTip+'</span>';
+      h += '<div style="padding:5px 2px;background:'+st.bg+';border:1px solid '+st.color+';border-radius:5px;text-align:center;min-width:0;overflow:hidden;">';
       h += '<div style="font-size:.62rem;color:var(--text);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+shortLabel+'</div>';
       h += '<div style="font-size:.95rem;font-weight:800;color:'+st.color+';line-height:1.1;margin-top:1px;">'+avgWeekly.toFixed(1)+'</div>';
       h += '<div style="font-size:.52rem;color:'+st.color+';font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+st.label+'</div>';
       h += '</div>';
     });
     h += '</div>';
-    h += '<div style="font-size:.62rem;color:var(--text2);margin:-10px 0 12px 0;text-align:center;">Average sets/week per muscle head.</div>';
+    h += '<div style="font-size:.62rem;color:var(--text2);margin-bottom:12px;text-align:center;">Average sets/week per muscle head.</div>';
 
     Object.entries(regions).forEach(([region, muscleNames]) => {
       const regionMuscles = muscleNames.filter(m=>muscles[m]).map(m=>({name:m,...muscles[m],exercises:Array.from(muscles[m].exercises)}));
