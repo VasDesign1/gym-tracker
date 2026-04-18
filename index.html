@@ -8886,15 +8886,23 @@ function renderRecovery() {
   });
   html += '</div>';
 
-  // Other fatigue metrics
-  html += '<div class="coach-grid">';
+  // Spinal Loading — full-width bar card (matches former Injury Prevention style).
   const spinalTip = infoTip(
     '<div class="tip-section"><strong>What it is:</strong> A 7-day stress score for your lower back / spinal erectors.</div>'+
     '<div class="tip-section"><strong>Where it comes from:</strong> Sum of (exercise factor × weight × reps ÷ 1000) across spine-loading lifts. Deadlifts and RDLs weigh 3.0, squats 2.5–3.0, barbell rows 2.0, leg press 1.5, shrugs 1.5.</div>'+
     '<div class="tip-section"><strong>Why it matters:</strong> The spine recovers slower than muscle. Stacking heavy axial loads in one week is the #1 driver of disc / erector strains.</div>'+
     '<div class="tip-section"><strong>Zones:</strong> LOW (&lt;10) green — safe. MODERATE (10–20) amber — distribute loads. HIGH (&gt;20) red — swap in belt-squat / machine alternatives, or give spine a week.</div>'
   );
-  html += '<div class="card"><h3>Spinal Loading (7-day)'+spinalTip+'</h3><div style="text-align:center;font-size:2rem;font-weight:800;color:'+(spinal.level==='HIGH'?'#e74c3c':spinal.level==='MODERATE'?'var(--orange)':'var(--green)')+';margin:12px 0;">'+spinal.score+'</div><div style="text-align:center;font-size:.85rem;color:var(--text2);">'+spinal.level+'</div></div>';
+  html += '<div class="card"><h3>Spinal Loading (7-Day)'+spinalTip+'</h3>';
+  const spinalPct = Math.min(100,(parseFloat(spinal.score)/20)*100);
+  html += '<div class="coach-bar-container" style="height:30px;"><div class="coach-bar-fill '+(spinal.level==='HIGH'?'red':spinal.level==='MODERATE'?'yellow':'green')+'" style="width:'+spinalPct+'%">'+spinal.score+' ('+spinal.level+')</div></div>';
+  html += '<div style="font-size:.8rem;color:var(--text2);margin-top:8px;">';
+  if(spinal.level==='HIGH') html += 'Consider: Alternate deadlifts and barbell rows weekly. Replace one with machine variant. Cap deadlift at 3 working sets.';
+  else if(spinal.level==='MODERATE') html += 'Acceptable range. Monitor for back tightness or pain. Ensure proper warm-up.';
+  else html += 'Low spinal stress. Good position for adding load if desired.';
+  html += '</div></div>';
+
+  // Fatigue Indicators — full-width card.
   const fatigueTip = infoTip(
     '<div class="tip-section"><strong>Consecutive Days:</strong> Days you trained in a row without rest. Ideal ≤ 2 for hard lifting (3 is ok in a crunch); ≥ 5 means CNS and joints are accumulating fatigue faster than they can recover.</div>'+
     '<div class="tip-section"><strong>Weeks Since Deload:</strong> A deload is a planned easy week (sets cut in half, same weights) that lets soft tissue and the nervous system recover. Schedule one every 4–6 weeks; overdue deloads predict stalls and injury.</div>'
@@ -8902,7 +8910,6 @@ function renderRecovery() {
   html += '<div class="card"><h3>Fatigue Indicators'+fatigueTip+'</h3>';
   html += '<div class="coach-metric"><span class="cm-label">Consecutive Days</span><span class="cm-value" style="color:'+(consec>=5?'#e74c3c':consec>=3?'var(--orange)':'var(--green)')+'">'+consec+'</span></div>';
   html += '<div class="coach-metric"><span class="cm-label">Weeks Since Deload</span><span class="cm-value" style="color:'+(weeksSinceDeload>=6?'#e74c3c':weeksSinceDeload>=4?'var(--orange)':'var(--green)')+'">'+weeksSinceDeload+'</span></div>';
-  html += '</div>';
   html += '</div>';
 
   // Deload suggestion
