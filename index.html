@@ -9909,24 +9909,58 @@ function renderTrainingMap() {
     if(!entries.length) return '<div style="color:var(--text2);font-size:.85rem;">No data.</div>';
     const weekDiv = weekCount||1;
     // Compute body-part-level direct + indirect totals using the SAME logic as Volume Dashboard
-    // (getIndirectBodyParts + exercise.bodyPart) so the Training Map region tiles match VD numbers.
+    // (getIndirectBodyParts + exercise.bodyPart) so the Training Map region headers match VD exactly.
+    // Also track per-exercise breakdown (bpDirectEx / bpIndirectEx) for hover tooltips on the region bar.
     const bpDirect = {}, bpIndirect = {};
+    const bpDirectEx = {}, bpIndirectEx = {};
+    const ensureBpEx = (bp, bucket) => {
+      if(!bpDirectEx[bp]) bpDirectEx[bp] = {};
+      if(!bpIndirectEx[bp]) bpIndirectEx[bp] = {};
+      return bucket==='direct' ? bpDirectEx[bp] : bpIndirectEx[bp];
+    };
     (filteredWorkouts||[]).forEach(w => {
       (w.exercises||[]).forEach(ex => {
         const name = resolveExerciseName(ex.name);
         const bp = ex.bodyPart || getBodyPartForExercise(name) || 'other';
         const ws = getWorkingSetsFromExercise(ex);
+        if(!ws.length) return;
         bpDirect[bp] = (bpDirect[bp]||0) + ws.length;
+        const d = ensureBpEx(bp, 'direct');
+        d[name] = (d[name]||0) + ws.length;
         const ind = getIndirectBodyParts(name, bp);
         Object.entries(ind).forEach(([bpI, mul]) => {
-          bpIndirect[bpI] = (bpIndirect[bpI]||0) + ws.length * mul;
+          const weighted = ws.length * mul;
+          bpIndirect[bpI] = (bpIndirect[bpI]||0) + weighted;
+          const ix = ensureBpEx(bpI, 'indirect');
+          ix[name] = (ix[name]||0) + weighted;
         });
       });
       if(w.peloton && w.peloton.watts && !w.peloton.recovery) {
         const fSets = Math.round((w.peloton.minutes||30)/5);
         bpDirect['legs'] = (bpDirect['legs']||0) + fSets;
+        const pelLabel = 'Peloton '+(w.peloton.watts||0)+'W × '+(w.peloton.minutes||30)+'min';
+        const d = ensureBpEx('legs', 'direct');
+        d[pelLabel] = (d[pelLabel]||0) + fSets;
       }
     });
+    // Body-part targets (same as VOLUME_TARGETS in Volume Dashboard).
+    const BP_TARGETS = {shoulder:{min:8,optimal:14,max:20}, chest:{min:10,optimal:14,max:20}, back:{min:10,optimal:16,max:22}, legs:{min:10,optimal:18,max:26}, biceps:{min:6,optimal:10,max:16}, triceps:{min:6,optimal:10,max:16}, core:{min:4,optimal:8,max:14}};
+    // Builds a VD-style hover tooltip HTML listing exercises that fed this body-part bar section.
+    function buildBpTip(title, exMap, kind, total) {
+      const ents = Object.entries(exMap||{}).sort((a,b)=>b[1]-a[1]);
+      let body = '<strong>'+title+'</strong> — <strong>'+(Math.round(total*10)/10)+' sets total</strong>';
+      if(kind==='indirect') body += '<div class="tip-section" style="color:var(--text2);font-size:.7rem;">Indirect sets are weighted by EMG activation % for the highest-activated muscle in this body part.</div>';
+      if(!ents.length) { body += '<div class="tip-section" style="color:var(--text2);">No '+kind+' exercises in this range.</div>'; }
+      else {
+        body += '<div class="tip-section">';
+        ents.forEach(([ex, s]) => {
+          const display = Math.round(s*10)/10;
+          body += '<div class="ex-row"><span>'+escapeHtml(ex)+'</span><span class="ex-sets">'+display+' sets</span></div>';
+        });
+        body += '</div>';
+      }
+      return body;
+    }
     // Map region name → body part key used by Volume Dashboard.
     const REGION_TO_BP = {'Chest':'chest','Shoulders':'shoulder','Back':'back','Biceps':'biceps','Triceps':'triceps','Quads':'legs','Glutes & Hips':'legs','Hamstrings':'legs','Calves':'legs','Core':'core'};
     // Single, status-based palette — same across every region so you can scan for problems at a glance.
@@ -10039,7 +10073,48 @@ function renderTrainingMap() {
       const regionMuscles = muscleNames.filter(m=>muscles[m]).map(m=>({name:m,...muscles[m],exercises:Array.from(muscles[m].exercises)}));
       if(!regionMuscles.length) return;
       h += '<div style="margin-bottom:14px;">';
-      h += '<div style="font-weight:700;font-size:.82rem;color:var(--text);margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid var(--border);">'+region+'</div>';
+
+      // === VD-style body-part header bar ===
+      // For legs sub-regions (Quads/Glutes & Hips/Hamstrings/Calves) we reuse the shared 'legs'
+      // body-part data. For everything else, look up by region → bp key.
+      const bpKey = REGION_TO_BP[region];
+      if(bpKey && BP_TARGETS[bpKey]) {
+        const targets = BP_TARGETS[bpKey];
+        const directRaw = (bpDirect[bpKey]||0) / weekDiv;
+        const indirectRaw = (bpIndirect[bpKey]||0) / weekDiv;
+        const directAvg = Math.round(directRaw*10)/10;
+        const indirectAvg = Math.round(indirectRaw*10)/10;
+        const totalAvg = Math.round((directRaw + indirectRaw)*10)/10;
+        const directPct = Math.min(100, (directRaw/targets.max)*100);
+        const indirectPct = indirectRaw>0 ? Math.min(100-directPct, (indirectRaw/targets.max)*100) : 0;
+        let color='green';
+        if(directAvg<targets.min && totalAvg<targets.optimal) color='red';
+        else if(directAvg>targets.max) color='red';
+        else if(directAvg<targets.optimal) color='yellow';
+        const perWkNote = weekDiv>1 ? '/wk avg' : '';
+        const directTip = buildBpTip('Direct '+region+' exercises', bpDirectEx[bpKey]||{}, 'direct', (bpDirect[bpKey]||0));
+        const indirectTip = buildBpTip('Indirect '+region+' stimulus (EMG-weighted)', bpIndirectEx[bpKey]||{}, 'indirect', (bpIndirect[bpKey]||0));
+
+        h += '<div style="margin-bottom:6px;">';
+        h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap;"><span style="font-weight:700;font-size:.88rem;color:var(--text);">'+region+'</span><span style="font-size:.8rem;color:var(--text2);"><strong style="color:var(--text);">'+totalAvg+'</strong> total'+perWkNote+' <span style="opacity:.7;">('+directAvg+' direct'+(indirectAvg>0?' + '+indirectAvg+' indirect':'')+') (target: '+targets.min+'–'+targets.max+')</span></span></div>';
+        h += '<div class="coach-bar-container" style="position:relative;overflow:visible;">';
+        h += '<div class="hover-tip coach-bar-fill '+color+'" tabindex="0" style="width:'+directPct+'%;">'+directAvg;
+        h += '<span class="info-body">'+directTip+'</span>';
+        h += '</div>';
+        if(indirectAvg>0) {
+          h += '<span class="hover-tip" tabindex="0" style="position:absolute;top:0;left:'+directPct+'%;height:100%;width:'+indirectPct+'%;z-index:1;">';
+          h += '<span style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,var(--highlight),var(--highlight) 4px,transparent 4px,transparent 8px);opacity:.55;border-radius:0 6px 6px 0;"></span>';
+          h += '<span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:.6rem;font-weight:700;color:var(--highlight);z-index:2;">'+indirectAvg+'</span>';
+          h += '<span class="info-body">'+indirectTip+'</span>';
+          h += '</span>';
+        }
+        h += '</div>';
+        h += '<div style="font-size:.62rem;color:var(--text2);margin-top:2px;">Per-muscle breakdown below (click a muscle row for full exercise detail).</div>';
+        h += '</div>';
+      } else {
+        // Fallback plain header (shouldn't happen for mapped regions).
+        h += '<div style="font-weight:700;font-size:.82rem;color:var(--text);margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid var(--border);">'+region+'</div>';
+      }
       regionMuscles.forEach(m => {
         const weeklyAvg = m.sets/weekDiv;
         const st = m.type==='primary' ? statusFor(weeklyAvg) : STATUS.good;
