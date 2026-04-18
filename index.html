@@ -892,13 +892,11 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
       <div class="chip selected" data-panel="briefing" onclick="switchCoachPanel('briefing')">Daily Briefing</div>
       <div class="chip" data-panel="session" onclick="switchCoachPanel('session')">Session Analysis</div>
       <div class="chip" data-panel="overload" onclick="switchCoachPanel('overload')">Progressive Overload</div>
-      <div class="chip" data-panel="volume" onclick="switchCoachPanel('volume')">Volume Dashboard</div>
-      <div class="chip" data-panel="recovery" onclick="switchCoachPanel('recovery')">Recovery & Fatigue</div>
+      <div class="chip" data-panel="recovery" onclick="switchCoachPanel('recovery')">Recovery, Fatigue &amp; Injury Prevention</div>
       <div class="chip" data-panel="recommendations" onclick="switchCoachPanel('recommendations')">Recommendations</div>
       <div class="chip" data-panel="prs" onclick="switchCoachPanel('prs')">Personal Records</div>
       <div class="chip" data-panel="peloton" onclick="switchCoachPanel('peloton')">Peloton Analysis</div>
       <div class="chip" data-panel="standards" onclick="switchCoachPanel('standards')">Strength Standards</div>
-      <div class="chip" data-panel="injury" onclick="switchCoachPanel('injury')">Injury Prevention</div>
       <div class="chip" data-panel="reports" onclick="switchCoachPanel('reports')">Reports</div>
       <div class="chip" data-panel="nutrition" onclick="switchCoachPanel('nutrition')">Nutrition Coach</div>
       <div class="chip" data-panel="bodycomp" onclick="switchCoachPanel('bodycomp')">Body Composition</div>
@@ -8099,13 +8097,12 @@ function switchCoachPanel(panel) {
     case 'briefing': el.innerHTML = renderBriefing(); break;
     case 'session': el.innerHTML = renderSessionAnalysis(); break;
     case 'overload': el.innerHTML = renderOverload(); break;
-    case 'volume': el.innerHTML = renderVolumeDashboard(); break;
-    case 'recovery': el.innerHTML = renderRecovery(); break;
+    // 'volume' and 'injury' panels were merged into 'recovery' (Recovery, Fatigue & Injury Prevention).
+    case 'volume': case 'injury': case 'recovery': el.innerHTML = renderRecovery(); break;
     case 'recommendations': el.innerHTML = renderRecommendations(); break;
     case 'prs': el.innerHTML = renderPRs(); break;
     case 'peloton': el.innerHTML = renderPelotonAnalysis(); break;
     case 'standards': el.innerHTML = renderStrengthStandards(); break;
-    case 'injury': el.innerHTML = renderInjuryPrevention(); break;
     case 'reports': el.innerHTML = renderReports(); break;
     case 'nutrition': el.innerHTML = renderNutritionCoach(); break;
     case 'bodycomp': el.innerHTML = renderBodyComp(); break;
@@ -8835,7 +8832,7 @@ function renderRecovery() {
   const weeksSinceDeload = getWeeksSinceDeload();
   const spinal = calcSpinalLoading(7);
 
-  let html = '<div class="coach-section"><h3>Recovery & Fatigue Dashboard</h3>';
+  let html = '<div class="coach-section"><h3>Recovery, Fatigue &amp; Injury Prevention</h3>';
 
   // Readiness + ACWR
   const readColor = readiness>=70?'var(--green)':readiness>=40?'var(--orange)':'#e74c3c';
@@ -8913,6 +8910,72 @@ function renderRecovery() {
     html += '<div class="coach-alert '+(weeksSinceDeload>=6?'danger':'warning')+'"><div class="alert-title">Deload '+(weeksSinceDeload>=6?'Overdue':'Approaching')+'</div>';
     html += weeksSinceDeload+' weeks without deload. Suggested deload protocol: Same exercises, 2 sets instead of 4, same weights, RIR 3-4. Focus on technique and recovery.</div>';
   }
+
+  // ── INJURY PREVENTION SECTION (merged from former Injury Prevention tab) ──
+  html += '<h3 style="margin-top:20px;">Injury Prevention</h3>';
+
+  // Weekly Pressing Volume
+  let pressSets=0;
+  getRecentWorkouts(7).forEach(w=>{
+    (w.exercises||[]).forEach(ex=>{
+      const n=resolveExerciseName(ex.name).toLowerCase();
+      if(n.includes('press')||n.includes('bench')) pressSets+=getWorkingSetsFromExercise(ex).length;
+    });
+  });
+  const pressTip = infoTip(
+    '<div class="tip-section"><strong>What it is:</strong> Total working sets of bench-pressing and overhead-pressing in the last 7 days.</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Pressing compresses the front of the shoulder. Too much pressing volume — especially without matching pulling work — is the #1 driver of shoulder impingement and rotator cuff overuse.</div>'+
+    '<div class="tip-section"><strong>Target:</strong> 8–14 weekly sets for most lifters. 14–16 only if pulling volume matches. &gt;16–18 = high risk zone.</div>'+
+    '<div class="tip-section"><strong>How to reduce:</strong> Rotate incline ↔ flat, swap one press for a dip or push-up, or replace with chest flies.</div>'
+  );
+  html += '<div class="card"><h3>Weekly Pressing Volume'+pressTip+'</h3>';
+  html += '<div class="coach-metric"><span class="cm-label">Total pressing sets (chest + shoulder)</span><span class="cm-value" style="color:'+(pressSets>18?'#e74c3c':pressSets>14?'var(--orange)':'var(--green)')+'">'+pressSets+'</span></div>';
+  if(pressSets>16) html += '<div style="font-size:.8rem;color:var(--orange);margin-top:8px;">High pressing volume increases shoulder impingement risk. Ensure equal or greater pulling volume and include face pulls / rear delt work.</div>';
+  html += '</div>';
+
+  // Push:Pull Ratio + Quad:Hamstring (moved from Volume Dashboard)
+  const vdPP = calcPushPullRatio();
+  const quadEx = ['Leg Extension','Squat','Smith Machine Squat','Leg Press'];
+  const hamEx = ['Seated Hamstring Curl','Lying Hamstring Curl'];
+  let quadSets=0, hamSets=0;
+  getRecentWorkouts(7).forEach(w=>{
+    (w.exercises||[]).forEach(ex=>{
+      const n=resolveExerciseName(ex.name);
+      const ws=getWorkingSetsFromExercise(ex);
+      if(quadEx.some(q=>n.toLowerCase().includes(q.toLowerCase()))) quadSets+=ws.length;
+      if(hamEx.some(q=>n.toLowerCase().includes(q.toLowerCase()))) hamSets+=ws.length;
+    });
+  });
+  const pushPullTip = infoTip(
+    '<div class="tip-section"><strong>What it is:</strong> Push sets (chest + shoulders + triceps) ÷ pull sets (back + biceps).</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Pressing pulls the shoulders forward; rowing pulls them back. Push-dominant → impingement, anterior shoulder pain, upper-back tightness.</div>'+
+    '<div class="tip-section"><strong>Target:</strong> 0.8–1.2 (slightly pull-dominant). &gt;1.3 push-dominant, add rows / face pulls.</div>'+
+    '<div class="tip-section"><strong>How to fix:</strong> Add rows, face pulls, or rear delt flies. Aim ≥1 pull set per push set.</div>'
+  );
+  const quadHamTip = infoTip(
+    '<div class="tip-section"><strong>What it is:</strong> Quad-dominant sets (squats, leg press, leg extension) ÷ hamstring sets (leg curls, RDLs).</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Hams stabilise the knee; weak hams = higher ACL and strain risk.</div>'+
+    '<div class="tip-section"><strong>Target:</strong> 1.5–2.0 quad:ham. Athletes who sprint should push closer to 1:1.</div>'+
+    '<div class="tip-section"><strong>How to fix:</strong> Add lying/seated leg curls, Romanian deadlifts, or good-mornings.</div>'
+  );
+  html += '<div class="coach-grid">';
+  html += '<div class="card"><h3>Push : Pull Ratio'+pushPullTip+'</h3><div class="coach-metric"><span class="cm-label">Push sets</span><span class="cm-value">'+vdPP.push+'</span></div><div class="coach-metric"><span class="cm-label">Pull sets</span><span class="cm-value">'+vdPP.pull+'</span></div><div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value" style="color:'+(vdPP.push>0&&vdPP.pull>0&&vdPP.push/vdPP.pull>1.3?'var(--orange)':'var(--green)')+'">'+vdPP.ratio+'</span></div><div style="font-size:.75rem;color:var(--text2);margin-top:8px;">Ideal: 0.8-1.2 (slightly pull-dominant)</div></div>';
+  html += '<div class="card"><h3>Quad : Hamstring'+quadHamTip+'</h3><div class="coach-metric"><span class="cm-label">Quad sets</span><span class="cm-value">'+quadSets+'</span></div><div class="coach-metric"><span class="cm-label">Hamstring sets</span><span class="cm-value">'+hamSets+'</span></div><div class="coach-metric"><span class="cm-label">Ratio</span><span class="cm-value">'+(hamSets>0?(quadSets/hamSets).toFixed(1):'N/A')+'</span></div><div style="font-size:.75rem;color:var(--text2);margin-top:8px;">Ideal: 1.5-2.0 quad-to-ham</div></div>';
+  html += '</div>';
+
+  // Recovery Warnings (red-status muscle groups)
+  const recWarnTip = infoTip(
+    '<div class="tip-section"><strong>What it shows:</strong> Muscle groups trained so recently they have not finished recovering yet.</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Re-training a muscle before muscle protein synthesis finishes leads to accumulated fatigue, joint stress, and much higher injury risk.</div>'+
+    '<div class="tip-section"><strong>How to act:</strong> Swap to a different muscle group, do cardio, or rest. If you must train it, cut volume in half and stop short of failure.</div>'
+  );
+  html += '<div class="card"><h3>Recovery Warnings'+recWarnTip+'</h3>';
+  let warnings=0;
+  Object.entries(recovery).forEach(([bp,data]) => {
+    if(data.status==='red') { warnings++; html += '<div class="coach-alert danger" style="margin-bottom:8px;">'+bp.charAt(0).toUpperCase()+bp.slice(1)+' was trained '+data.hours+'h ago and is still recovering ('+data.hoursLeft+'h remaining). Training again now increases injury risk.</div>'; }
+  });
+  if(!warnings) html += '<div class="coach-alert success">All muscle groups are adequately recovered.</div>';
+  html += '</div>';
 
   html += '</div>';
   return html;
