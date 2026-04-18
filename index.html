@@ -936,6 +936,12 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
   <button class="popup-close" onclick="closeGradePopup()">&times;</button>
   <div id="cgp-content"></div>
 </div>
+<!-- Muscle Detail Popup (Training Map) -->
+<div class="coach-grade-overlay" id="mp-overlay" onclick="window.closeMusclePopup()"></div>
+<div class="coach-grade-popup" id="mp-popup">
+  <button class="popup-close" onclick="window.closeMusclePopup()">&times;</button>
+  <div id="mp-content"></div>
+</div>
 
 <!-- Exercise Database Browser -->
 <div class="exdb-overlay" id="exdb-overlay">
@@ -6889,38 +6895,56 @@ function inlineBreakdown(breakdown, maxScore, label) {
   return h;
 }
 
+// Maps a specific muscle name (from EXERCISE_ACTIVATION_MAP) to its body part group.
+// Used by Volume Dashboard to aggregate muscle-level EMG data up to body-part level.
+const MUSCLE_TO_BODYPART = {
+  'Upper Chest':'chest','Mid Chest':'chest','Lower Chest':'chest','Inner Chest':'chest',
+  'Front Delts':'shoulder','Side Delts':'shoulder','Rear Delts':'shoulder','External Rotators':'shoulder',
+  'Lats':'back','Rhomboids':'back','Upper Traps':'back','Mid Traps':'back','Lower Traps':'back',
+  'Erectors':'back','Teres Major':'back','Levator Scapulae':'back',
+  'Biceps (Long Head)':'biceps','Biceps (Short Head)':'biceps','Brachialis':'biceps','Brachioradialis':'biceps',
+  'Triceps (Long Head)':'triceps','Triceps (Lateral Head)':'triceps','Triceps (Medial Head)':'triceps',
+  'Quads (Vastus)':'legs','Quads (Rectus Femoris)':'legs','Hamstrings':'legs','Glutes':'legs',
+  'Glute Medius':'legs','Adductors (Inner Thigh)':'legs','Abductors (Outer Thigh)':'legs',
+  'Gastrocnemius':'legs','Soleus':'legs','Hip Flexors':'legs',
+  'Rectus Abs':'core','Lower Abs':'core','Obliques':'core','Transverse Abs':'core','Serratus':'core'
+};
+
+// EMG-based indirect body-part contributions. For each secondary muscle in the exercise,
+// map to its body part and take the MAX activation among muscles in that body part as the
+// body-part-level indirect multiplier. Source: EXERCISE_ACTIVATION_MAP (see Training Map
+// methodology panel for citations).
 function getIndirectBodyParts(name, primaryBp) {
-  const n = (name||'').toLowerCase();
   const out = {};
-  const add = (bp, m) => { if(bp && bp !== primaryBp) out[bp] = (out[bp]||0) + m; };
-
-  // Use BOTH the exercise name AND the user's body-part classification to decide the movement
-  // pattern — e.g. "Dumbbell Press" is a shoulder press when logged as shoulder, a chest press otherwise.
-  const hasPress = /press|bench|push[- ]?up/.test(n);
-  const isFly = /\bfly\b|pec dec/.test(n);
-  const isRow = /\brow\b|pulldown|pull[- ]?down|pull[- ]?up|pullover/.test(n);
-  const isRearDelt = /rear delt|face pull|reverse pec|bent over fly|bitch slap/.test(n);
-  const isDeadlift = /deadlift|\brdl\b|romanian/.test(n);
-  const isSquat = /\bsquat\b|leg press/.test(n);
-  const isLateralRaise = /lateral raise|front raise/.test(n);
-
-  const isShoulderPress = hasPress && !isFly && (
-    primaryBp === 'shoulder' ||
-    /shoulder press|overhead press|military press|machine shoulder|arnold press|seated press/.test(n)
-  );
-  const isChestPress = hasPress && !isFly && !isShoulderPress && (
-    primaryBp === 'chest' ||
-    /(bench press|chest press|push[- ]?up|smith machine .*barbell press)/.test(n)
-  );
-
-  if(isChestPress)     { add('triceps', 0.5); add('shoulder', 0.25); }
-  if(isShoulderPress)  { add('triceps', 0.4); add('chest', 0.15); }
-  if(isRow && !isRearDelt) { add('biceps', 0.5); add('shoulder', 0.2); }
-  if(isRearDelt)       { add('back', 0.3); }
-  if(isFly)            { add('shoulder', 0.15); }
-  if(isDeadlift)       { add('back', 0.6); add('legs', 0.3); add('core', 0.2); }
-  if(isSquat)          { add('core', 0.25); add('back', 0.15); }
-  if(isLateralRaise)   { add('back', 0.1); }
+  // typeof check to handle cold loads before EXERCISE_ACTIVATION_MAP is parsed
+  if(typeof EXERCISE_ACTIVATION_MAP === 'undefined') return out;
+  const resolved = typeof resolveExerciseName==='function' ? resolveExerciseName(name) : name;
+  let data = EXERCISE_ACTIVATION_MAP[resolved];
+  // Fuzzy + token fallback — same logic as Training Map's activationFor().
+  if(!data) {
+    const lower = (resolved||'').toLowerCase();
+    for(const [k,v] of Object.entries(EXERCISE_ACTIVATION_MAP)) {
+      if(lower.includes(k.toLowerCase()) || k.toLowerCase().includes(lower)) { data=v; break; }
+    }
+    if(!data) {
+      const normTok = t => t.length>3 && t.endsWith('s') ? t.slice(0,-1) : t;
+      const exTokens = new Set(lower.split(/\s+/).filter(t=>t.length>2).map(normTok));
+      let bestKey=null, bestScore=0;
+      for(const k of Object.keys(EXERCISE_ACTIVATION_MAP)) {
+        const kTokens = k.toLowerCase().split(/\s+/).filter(t=>t.length>2).map(normTok);
+        const overlap = kTokens.filter(t=>exTokens.has(t)).length;
+        if(overlap>=2 && overlap>bestScore) { bestScore=overlap; bestKey=k; }
+      }
+      if(bestKey) data = EXERCISE_ACTIVATION_MAP[bestKey];
+    }
+  }
+  if(!data) return out;
+  // Walk secondary muscles, group by body part, take MAX activation.
+  Object.entries(data.secondary||{}).forEach(([muscle, act]) => {
+    const bp = MUSCLE_TO_BODYPART[muscle];
+    if(!bp || bp === primaryBp) return; // skip unknown or same-bp
+    if(!out[bp] || act > out[bp]) out[bp] = act;
+  });
   return out;
 }
 
@@ -9710,6 +9734,8 @@ const EXERCISE_ACTIVATION_MAP = {
   'Cable Overhead Triceps Extension':{primary:['Triceps (Long Head)'],secondary:{'Triceps (Lateral Head)':0.75,'Triceps (Medial Head)':0.75}},
   'Seated Hammer Curl':{primary:['Brachialis','Brachioradialis'],secondary:{'Biceps (Long Head)':0.70,'Biceps (Short Head)':0.65}},
   'Standing Hammer Curl':{primary:['Brachialis','Brachioradialis'],secondary:{'Biceps (Long Head)':0.70,'Biceps (Short Head)':0.65,'Front Delts':0.25,'Erectors':0.25}},
+  'Cable Rope Hammer Curl':{primary:['Brachialis','Brachioradialis'],secondary:{'Biceps (Long Head)':0.70,'Biceps (Short Head)':0.65,'Front Delts':0.20}},
+  'Rope Hammer Curl':{primary:['Brachialis','Brachioradialis'],secondary:{'Biceps (Long Head)':0.70,'Biceps (Short Head)':0.65,'Front Delts':0.20}},
   'Bayesian Curl':{primary:['Biceps (Long Head)'],secondary:{'Biceps (Short Head)':0.75,'Brachialis':0.50,'Brachioradialis':0.40}},
   'Cable Biceps Curl':{primary:['Biceps (Long Head)','Biceps (Short Head)'],secondary:{'Brachialis':0.55,'Brachioradialis':0.45,'Front Delts':0.20}},
   'Dumbbell Isolation Biceps Curl':{primary:['Biceps (Long Head)','Biceps (Short Head)'],secondary:{'Brachialis':0.55,'Brachioradialis':0.45,'Front Delts':0.20}},
@@ -10018,14 +10044,49 @@ function renderTrainingMap() {
         const weeklyAvg = m.sets/weekDiv;
         const st = m.type==='primary' ? statusFor(weeklyAvg) : STATUS.good;
         const pct = Math.min(100, (weeklyAvg/BAR_SCALE)*100);
-        // Build click-to-expand detail showing direct and indirect exercises + sets.
         const directEntries = Object.entries(m.directEx||{}).sort((a,b)=>b[1]-a[1]);
         const indirectEntries = Object.entries(m.indirectEx||{}).sort((a,b)=>b[1]-a[1]);
-        const directTotal = directEntries.reduce((s,e)=>s+e[1],0);
-        const indirectTotal = indirectEntries.reduce((s,e)=>s+e[1],0);
+        const directTotal = Math.round(directEntries.reduce((s,e)=>s+e[1],0)*10)/10;
+        const indirectTotal = Math.round(indirectEntries.reduce((s,e)=>s+e[1],0)*10)/10;
         const hasDetail = directEntries.length || indirectEntries.length;
 
-        h += '<div style="margin-bottom:6px;">';
+        // Hover preview (compact). Shows top exercises immediately on hover.
+        let hoverBody = '<strong>'+m.name+'</strong> — '+m.sets+' sets'+(weekDiv>1?' (~'+weeklyAvg.toFixed(1)+'/wk)':'');
+        hoverBody += '<div class="tip-section" style="font-size:.7rem;color:'+st.color+';">Status: '+st.label+' — '+st.desc+'</div>';
+        if(directEntries.length) {
+          hoverBody += '<div class="tip-section"><strong>Direct ('+directTotal+' sets):</strong>';
+          directEntries.slice(0,5).forEach(([ex,s]) => { hoverBody += '<div class="ex-row"><span>'+escapeHtml(ex)+'</span><span class="ex-sets">'+s+'</span></div>'; });
+          if(directEntries.length>5) hoverBody += '<div style="color:var(--text2);font-size:.7rem;">+'+(directEntries.length-5)+' more — click for full list</div>';
+          hoverBody += '</div>';
+        }
+        if(indirectEntries.length) {
+          hoverBody += '<div class="tip-section"><strong>Indirect ('+indirectTotal+' sets, EMG-weighted):</strong>';
+          indirectEntries.slice(0,5).forEach(([ex,s]) => { hoverBody += '<div class="ex-row"><span>'+escapeHtml(ex)+'</span><span class="ex-sets">'+s+'</span></div>'; });
+          if(indirectEntries.length>5) hoverBody += '<div style="color:var(--text2);font-size:.7rem;">+'+(indirectEntries.length-5)+' more — click for full list</div>';
+          hoverBody += '</div>';
+        }
+        hoverBody += '<div class="tip-section" style="color:var(--highlight);font-size:.7rem;">Click the row for the full detail popup.</div>';
+
+        // Click popup: store full detail in a global cache, click opens persistent modal.
+        let clickBody = '<div style="font-weight:700;font-size:1rem;color:var(--highlight2);margin-bottom:6px;">'+m.name+'</div>';
+        clickBody += '<div style="font-size:.8rem;margin-bottom:10px;">'+m.sets+' sets'+(weekDiv>1?' (~'+weeklyAvg.toFixed(1)+'/wk)':'')+' · <span style="color:'+st.color+';font-weight:700;">'+st.label+'</span> — '+st.desc+'</div>';
+        if(directEntries.length) {
+          clickBody += '<div style="font-weight:700;color:var(--green);margin:10px 0 4px;font-size:.85rem;">Direct exercises (100% activation) — '+directTotal+' sets total</div>';
+          directEntries.forEach(([ex,s]) => { clickBody += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.8rem;"><span>'+escapeHtml(ex)+'</span><span style="font-weight:700;color:var(--highlight2);">'+s+' sets</span></div>'; });
+        }
+        if(indirectEntries.length) {
+          clickBody += '<div style="font-weight:700;color:var(--highlight);margin:10px 0 4px;font-size:.85rem;">Indirect exercises (EMG-weighted) — '+indirectTotal+' sets total</div>';
+          clickBody += '<div style="font-size:.72rem;color:var(--text2);margin-bottom:4px;">Each exercise\'s contribution is sets × its EMG activation % for this muscle.</div>';
+          indirectEntries.forEach(([ex,s]) => { clickBody += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.8rem;"><span>'+escapeHtml(ex)+'</span><span style="font-weight:700;color:var(--highlight);">'+s+' sets</span></div>'; });
+        }
+        if(!hasDetail) clickBody += '<div style="font-size:.8rem;color:var(--text2);">No exercises in this range.</div>';
+        // Store in cache keyed by a unique id for this render.
+        if(!window._musclePopupStore) window._musclePopupStore = {};
+        const mpId = 'mp_'+region.replace(/\W/g,'')+'_'+m.name.replace(/\W/g,'');
+        window._musclePopupStore[mpId] = clickBody;
+
+        h += '<div class="hover-tip" tabindex="0" onclick="window.openMusclePopup(\''+mpId+'\')" style="margin-bottom:6px;cursor:pointer;" title="Click for full detail">';
+        h += '<span class="info-body">'+hoverBody+'</span>';
         h += '<div style="display:flex;justify-content:space-between;align-items:center;font-size:.78rem;margin-bottom:2px;gap:6px;flex-wrap:wrap;">';
         h += '<span style="flex:1;min-width:0;">'+m.name+' <span style="font-size:.62rem;font-weight:700;color:'+st.color+';padding:1px 5px;border-radius:3px;background:'+st.bg+';">'+st.label+'</span></span>';
         h += '<span style="color:var(--text2);font-size:.72rem;">'+m.sets+' sets'+(weekDiv>1?' (~'+weeklyAvg.toFixed(1)+'/wk)':'')+'</span>';
@@ -10036,21 +10097,8 @@ function renderTrainingMap() {
         h += '<div style="position:absolute;top:0;bottom:0;left:'+bandStart+'%;width:'+(bandEnd-bandStart)+'%;background:rgba(46,204,113,.08);border-left:1px dashed rgba(46,204,113,.35);border-right:1px dashed rgba(46,204,113,.35);"></div>';
         h += '<div style="height:100%;width:'+pct+'%;background:'+st.color+';border-radius:6px;"></div>';
         h += '</div>';
-        // Click-to-expand exercise detail (replaces hover tooltip).
         if(hasDetail) {
-          h += '<details style="margin-top:2px;"><summary style="cursor:pointer;font-size:.62rem;color:var(--highlight);font-weight:600;list-style:none;user-select:none;">'+m.exercises.length+' exercises — click for breakdown ▸</summary>';
-          h += '<div style="padding:6px 8px;margin-top:3px;background:var(--card2);border-radius:6px;font-size:.7rem;">';
-          if(directEntries.length) {
-            h += '<div style="font-weight:700;color:var(--green);margin-bottom:3px;">Direct ('+directTotal+' sets)</div>';
-            directEntries.forEach(([ex,s]) => { h += '<div style="display:flex;justify-content:space-between;padding:1px 0;"><span>'+escapeHtml(ex)+'</span><span style="font-weight:700;color:var(--highlight2);">'+s+' sets</span></div>'; });
-          }
-          if(indirectEntries.length) {
-            h += '<div style="font-weight:700;color:var(--highlight);margin-top:6px;margin-bottom:3px;">Indirect ('+indirectTotal+' sets at 50%)</div>';
-            indirectEntries.forEach(([ex,s]) => { h += '<div style="display:flex;justify-content:space-between;padding:1px 0;"><span>'+escapeHtml(ex)+'</span><span style="font-weight:700;color:var(--highlight);">'+s+' sets</span></div>'; });
-          }
-          h += '</div></details>';
-        } else {
-          h += '<div style="font-size:.62rem;color:var(--text2);margin-top:1px;">'+Array.from(m.exercises).join(', ')+'</div>';
+          h += '<div style="font-size:.62rem;color:var(--highlight);margin-top:2px;">👆 Hover for preview · click for full detail ('+directEntries.length+' direct, '+indirectEntries.length+' indirect)</div>';
         }
         h += '</div>';
       });
@@ -10215,18 +10263,30 @@ function _doUpdateTrainingMap() {
       for(const [k,v] of Object.entries(EXERCISE_ACTIVATION_MAP)) {
         if(lower.includes(k.toLowerCase()) || k.toLowerCase().includes(lower)) return v;
       }
-      // Token-based match (e.g. "Rope Hammer Curl" → "Standing Hammer Curl").
-      const exTokens = new Set(lower.split(/\s+/).filter(t=>t.length>2));
+      // Token-based match (e.g. "Rope Hammer Curls" → "Standing Hammer Curl").
+      // Normalize tokens to singular (strip trailing 's') so plurals match.
+      const normTok = t => t.length>3 && t.endsWith('s') ? t.slice(0,-1) : t;
+      const exTokens = new Set(lower.split(/\s+/).filter(t=>t.length>2).map(normTok));
       let bestKey=null, bestScore=0;
       for(const k of Object.keys(EXERCISE_ACTIVATION_MAP)) {
-        const kTokens = k.toLowerCase().split(/\s+/).filter(t=>t.length>2);
+        const kTokens = k.toLowerCase().split(/\s+/).filter(t=>t.length>2).map(normTok);
         const overlap = kTokens.filter(t=>exTokens.has(t)).length;
         if(overlap>=2 && overlap>bestScore) { bestScore=overlap; bestKey=k; }
       }
       if(bestKey) return EXERCISE_ACTIVATION_MAP[bestKey];
-      // Last resort: body-part default so the exercise still counts.
-      const BP_DEFAULT = {biceps:['Biceps (Short Head)'],triceps:['Triceps (Lateral Head)'],chest:['Mid Chest'],shoulder:['Front Delts'],back:['Lats'],legs:['Quads (Vastus)'],core:['Rectus Abs']};
-      return {primary: BP_DEFAULT[bp]||['Unknown'], secondary:{}};
+      // Last resort: body-part default. Covers exercises logged from the Browse Exercise
+      // Database (arbitrary names not in our curated map). Includes realistic secondary
+      // distribution so no contribution is lost.
+      const BP_DEFAULT = {
+        biceps:{primary:['Biceps (Long Head)','Biceps (Short Head)'],secondary:{'Brachialis':0.5,'Brachioradialis':0.4}},
+        triceps:{primary:['Triceps (Long Head)','Triceps (Lateral Head)','Triceps (Medial Head)'],secondary:{}},
+        chest:{primary:['Mid Chest','Lower Chest'],secondary:{'Upper Chest':0.5,'Front Delts':0.5,'Triceps (Lateral Head)':0.45,'Triceps (Long Head)':0.45,'Triceps (Medial Head)':0.45}},
+        shoulder:{primary:['Front Delts','Side Delts'],secondary:{'Rear Delts':0.3,'Triceps (Long Head)':0.4,'Upper Traps':0.45,'External Rotators':0.25}},
+        back:{primary:['Lats'],secondary:{'Rhomboids':0.55,'Mid Traps':0.5,'Lower Traps':0.5,'Upper Traps':0.4,'Biceps (Long Head)':0.45,'Biceps (Short Head)':0.4,'Brachialis':0.45,'Brachioradialis':0.4,'Rear Delts':0.45,'Erectors':0.5,'Teres Major':0.55}},
+        legs:{primary:['Quads (Vastus)','Glutes'],secondary:{'Quads (Rectus Femoris)':0.55,'Hamstrings':0.35,'Adductors (Inner Thigh)':0.4,'Gastrocnemius':0.3}},
+        core:{primary:['Rectus Abs'],secondary:{'Obliques':0.55,'Transverse Abs':0.5,'Lower Abs':0.55,'Hip Flexors':0.4}}
+      };
+      return BP_DEFAULT[bp] || {primary:['Unknown'], secondary:{}};
     }
 
     workouts.forEach(w => {
@@ -10872,6 +10932,20 @@ window.openGradePopup = function(id) {
 window.closeGradePopup = function() {
   document.getElementById('cgp-overlay').classList.remove('show');
   document.getElementById('cgp-popup').classList.remove('show');
+};
+
+// Training Map muscle detail popup — stored content opens in a persistent modal on click.
+window.openMusclePopup = function(id) {
+  const html = (window._musclePopupStore||{})[id];
+  if(!html) return;
+  const el = document.getElementById('mp-content');
+  if(el) el.innerHTML = html;
+  document.getElementById('mp-overlay').classList.add('show');
+  document.getElementById('mp-popup').classList.add('show');
+};
+window.closeMusclePopup = function() {
+  document.getElementById('mp-overlay').classList.remove('show');
+  document.getElementById('mp-popup').classList.remove('show');
 };
 
 window.updateTrainingMap = function() {
