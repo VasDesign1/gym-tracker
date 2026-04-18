@@ -10225,7 +10225,18 @@ function renderTrainingMap() {
         h += '<div style="height:100%;width:'+pct+'%;background:'+st.color+';border-radius:6px;"></div>';
         h += '</div>';
         if(hasDetail) {
-          h += '<div style="font-size:.62rem;color:var(--highlight);margin-top:2px;">Click for full breakdown ('+directEntries.length+' direct, '+indirectEntries.length+' indirect)</div>';
+          // Inline exercise list — all direct and indirect exercises listed here for at-a-glance scanning.
+          h += '<div style="font-size:.62rem;color:var(--text2);margin-top:2px;line-height:1.5;">';
+          if(directEntries.length) {
+            h += '<span style="color:var(--green);font-weight:700;">Direct:</span> ';
+            h += directEntries.map(([ex, sets]) => escapeHtml(ex)+' ('+sets+')').join(', ');
+          }
+          if(indirectEntries.length) {
+            if(directEntries.length) h += ' · ';
+            h += '<span style="color:var(--highlight);font-weight:700;">Indirect:</span> ';
+            h += indirectEntries.map(([ex, sets]) => escapeHtml(ex)+' ('+sets+')').join(', ');
+          }
+          h += '</div>';
         }
         h += '</div>';
       });
