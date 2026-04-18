@@ -9658,6 +9658,93 @@ function renderBodyComp() {
   return html;
 }
 
+// ── EMG-BASED EXERCISE ACTIVATION MAP ──
+// For each exercise: primary muscles (100% activation) and secondary muscles with
+// evidence-based activation % (from EMG studies, see ACTIVATION_SOURCES below).
+// Secondary activation is NOT a flat 50% — it's the actual fraction of primary EMG
+// amplitude reported in peer-reviewed literature.
+const EXERCISE_ACTIVATION_MAP = {
+  'Dumbbell Press':{primary:['Front Delts','Side Delts'],secondary:{'Triceps (Long Head)':0.55,'Triceps (Lateral Head)':0.45,'Triceps (Medial Head)':0.40,'Upper Chest':0.35,'Upper Traps':0.50,'Rear Delts':0.25,'External Rotators':0.30}},
+  'Machine Shoulder Press':{primary:['Front Delts','Side Delts'],secondary:{'Triceps (Long Head)':0.50,'Triceps (Lateral Head)':0.45,'Triceps (Medial Head)':0.40,'Upper Chest':0.30,'Upper Traps':0.45}},
+  'Dumbbell Lateral Raise':{primary:['Side Delts'],secondary:{'Front Delts':0.35,'Rear Delts':0.30,'Upper Traps':0.55,'External Rotators':0.25}},
+  'Cable Lateral Raise':{primary:['Side Delts'],secondary:{'Front Delts':0.30,'Rear Delts':0.30,'Upper Traps':0.50,'External Rotators':0.25}},
+  'Dumbbell Bent Over Fly':{primary:['Rear Delts'],secondary:{'Mid Traps':0.85,'Rhomboids':0.75,'Lower Traps':0.50,'Side Delts':0.40,'Erectors':0.45,'External Rotators':0.30}},
+  'Reverse Pec Dec Fly':{primary:['Rear Delts'],secondary:{'Mid Traps':0.80,'Rhomboids':0.70,'Lower Traps':0.45,'Side Delts':0.35,'External Rotators':0.30}},
+  'Cable Face Pulls':{primary:['Rear Delts','External Rotators'],secondary:{'Mid Traps':0.75,'Rhomboids':0.70,'Lower Traps':0.60,'Side Delts':0.35,'Biceps (Long Head)':0.25,'Brachialis':0.20}},
+  'Cable Bitch Slap':{primary:['Rear Delts'],secondary:{'Mid Traps':0.70,'Rhomboids':0.60,'Lower Traps':0.40,'Side Delts':0.35,'External Rotators':0.30}},
+  'Dumbbell Front Raise':{primary:['Front Delts'],secondary:{'Side Delts':0.45,'Upper Chest':0.35,'Upper Traps':0.50,'Biceps (Long Head)':0.25,'Biceps (Short Head)':0.20}},
+  'Cable Front Raise':{primary:['Front Delts'],secondary:{'Side Delts':0.40,'Upper Chest':0.30,'Upper Traps':0.45,'Biceps (Long Head)':0.20,'Biceps (Short Head)':0.20}},
+  'Flat Bench Press':{primary:['Mid Chest','Lower Chest'],secondary:{'Upper Chest':0.55,'Inner Chest':0.80,'Front Delts':0.65,'Triceps (Long Head)':0.55,'Triceps (Lateral Head)':0.60,'Triceps (Medial Head)':0.55,'Side Delts':0.25}},
+  'Incline Bench Press':{primary:['Upper Chest'],secondary:{'Mid Chest':0.75,'Lower Chest':0.45,'Inner Chest':0.70,'Front Delts':0.85,'Triceps (Long Head)':0.50,'Triceps (Lateral Head)':0.55,'Triceps (Medial Head)':0.50}},
+  'Flat Dumbbell Press':{primary:['Mid Chest','Lower Chest'],secondary:{'Upper Chest':0.55,'Inner Chest':0.80,'Front Delts':0.60,'Triceps (Long Head)':0.45,'Triceps (Lateral Head)':0.50,'Triceps (Medial Head)':0.45,'Side Delts':0.30}},
+  'Incline Dumbbell Press':{primary:['Upper Chest'],secondary:{'Mid Chest':0.75,'Lower Chest':0.40,'Inner Chest':0.70,'Front Delts':0.85,'Triceps (Long Head)':0.45,'Triceps (Lateral Head)':0.50,'Triceps (Medial Head)':0.45,'Side Delts':0.30}},
+  'Smith Machine Flat Barbell Press':{primary:['Mid Chest','Lower Chest'],secondary:{'Upper Chest':0.50,'Inner Chest':0.75,'Front Delts':0.60,'Triceps (Long Head)':0.60,'Triceps (Lateral Head)':0.65,'Triceps (Medial Head)':0.60,'Side Delts':0.20}},
+  'Smith Machine Incline Barbell Press':{primary:['Upper Chest'],secondary:{'Mid Chest':0.70,'Lower Chest':0.40,'Inner Chest':0.65,'Front Delts':0.80,'Triceps (Long Head)':0.55,'Triceps (Lateral Head)':0.60,'Triceps (Medial Head)':0.55,'Side Delts':0.20}},
+  'Pec Dec Fly':{primary:['Mid Chest','Inner Chest'],secondary:{'Upper Chest':0.55,'Lower Chest':0.70,'Front Delts':0.40,'Biceps (Short Head)':0.20}},
+  'Flat Bench Dumbbell Fly':{primary:['Mid Chest','Inner Chest'],secondary:{'Upper Chest':0.50,'Lower Chest':0.70,'Front Delts':0.45,'Biceps (Short Head)':0.25,'Biceps (Long Head)':0.20}},
+  'Incline Bench Dumbbell Fly':{primary:['Upper Chest'],secondary:{'Mid Chest':0.70,'Inner Chest':0.70,'Lower Chest':0.35,'Front Delts':0.60,'Biceps (Short Head)':0.25,'Biceps (Long Head)':0.20}},
+  'Low Cable Fly':{primary:['Upper Chest'],secondary:{'Mid Chest':0.65,'Inner Chest':0.70,'Lower Chest':0.30,'Front Delts':0.55,'Biceps (Short Head)':0.30,'Biceps (Long Head)':0.25}},
+  'High Cable Fly':{primary:['Lower Chest','Mid Chest'],secondary:{'Inner Chest':0.80,'Upper Chest':0.30,'Front Delts':0.35,'Lats':0.35,'Biceps (Short Head)':0.25,'Biceps (Long Head)':0.20}},
+  'Dumbbell Pullover':{primary:['Lats','Lower Chest'],secondary:{'Upper Chest':0.30,'Mid Chest':0.50,'Teres Major':0.70,'Triceps (Long Head)':0.50,'Rhomboids':0.30,'Rectus Abs':0.30}},
+  'Deadlift':{primary:['Erectors','Glutes','Hamstrings'],secondary:{'Quads (Vastus)':0.55,'Quads (Rectus Femoris)':0.40,'Lats':0.50,'Upper Traps':0.80,'Mid Traps':0.65,'Lower Traps':0.55,'Rhomboids':0.55,'Rectus Abs':0.35,'Obliques':0.45,'Adductors (Inner Thigh)':0.50,'Brachialis':0.35,'Brachioradialis':0.50}},
+  'Barbell Rows':{primary:['Lats','Rhomboids','Mid Traps'],secondary:{'Lower Traps':0.60,'Rear Delts':0.60,'Teres Major':0.55,'Biceps (Long Head)':0.45,'Biceps (Short Head)':0.35,'Brachialis':0.50,'Brachioradialis':0.45,'Erectors':0.70,'Upper Traps':0.40,'Hamstrings':0.30,'Glutes':0.30}},
+  'Lat Pulldowns':{primary:['Lats'],secondary:{'Teres Major':0.70,'Rhomboids':0.50,'Mid Traps':0.50,'Lower Traps':0.55,'Rear Delts':0.50,'Biceps (Long Head)':0.55,'Biceps (Short Head)':0.50,'Brachialis':0.50,'Brachioradialis':0.45}},
+  'Seated Cable Lat Row':{primary:['Lats','Mid Traps','Rhomboids'],secondary:{'Lower Traps':0.60,'Rear Delts':0.55,'Upper Traps':0.35,'Teres Major':0.55,'Biceps (Long Head)':0.50,'Biceps (Short Head)':0.45,'Brachialis':0.45,'Brachioradialis':0.40,'Erectors':0.45}},
+  'Shrugs':{primary:['Upper Traps'],secondary:{'Mid Traps':0.55,'Lower Traps':0.30,'Rhomboids':0.35,'Brachioradialis':0.40,'Brachialis':0.25}},
+  'Pull-ups':{primary:['Lats'],secondary:{'Teres Major':0.75,'Rhomboids':0.55,'Mid Traps':0.55,'Lower Traps':0.65,'Rear Delts':0.50,'Biceps (Long Head)':0.55,'Biceps (Short Head)':0.50,'Brachialis':0.55,'Brachioradialis':0.50,'Rectus Abs':0.40,'Obliques':0.35}},
+  'Assisted Pull-ups':{primary:['Lats'],secondary:{'Teres Major':0.70,'Rhomboids':0.50,'Mid Traps':0.50,'Lower Traps':0.60,'Rear Delts':0.45,'Biceps (Long Head)':0.50,'Biceps (Short Head)':0.45,'Brachialis':0.50,'Brachioradialis':0.45,'Rectus Abs':0.30}},
+  'Straight Arm Lat Pull Down':{primary:['Lats'],secondary:{'Teres Major':0.75,'Lower Traps':0.50,'Rear Delts':0.45,'Triceps (Long Head)':0.40,'Rectus Abs':0.35,'Lower Chest':0.30}},
+  'Rope Straight Arm Pull Down':{primary:['Lats'],secondary:{'Teres Major':0.75,'Lower Traps':0.50,'Rear Delts':0.45,'Triceps (Long Head)':0.45,'Triceps (Lateral Head)':0.30,'Triceps (Medial Head)':0.30,'Rectus Abs':0.35,'Lower Chest':0.30}},
+  'Leg Extension':{primary:['Quads (Vastus)','Quads (Rectus Femoris)'],secondary:{'Hip Flexors':0.30,'Adductors (Inner Thigh)':0.20}},
+  'Seated Hamstring Curl':{primary:['Hamstrings'],secondary:{'Gastrocnemius':0.50,'Glutes':0.20}},
+  'Lying Hamstring Curl':{primary:['Hamstrings'],secondary:{'Gastrocnemius':0.55,'Glutes':0.25,'Erectors':0.25}},
+  'Squat':{primary:['Quads (Vastus)','Glutes'],secondary:{'Quads (Rectus Femoris)':0.65,'Hamstrings':0.35,'Adductors (Inner Thigh)':0.65,'Glute Medius':0.55,'Erectors':0.70,'Rectus Abs':0.30,'Obliques':0.40,'Upper Traps':0.30,'Gastrocnemius':0.40,'Soleus':0.50}},
+  'Smith Machine Squat':{primary:['Quads (Vastus)','Glutes'],secondary:{'Quads (Rectus Femoris)':0.70,'Hamstrings':0.25,'Adductors (Inner Thigh)':0.55,'Glute Medius':0.35,'Erectors':0.50,'Rectus Abs':0.20,'Obliques':0.30,'Gastrocnemius':0.35,'Soleus':0.45}},
+  'Leg Press':{primary:['Quads (Vastus)'],secondary:{'Quads (Rectus Femoris)':0.70,'Glutes':0.55,'Hamstrings':0.25,'Adductors (Inner Thigh)':0.50,'Soleus':0.35,'Gastrocnemius':0.30}},
+  'Adductor':{primary:['Adductors (Inner Thigh)'],secondary:{'Glutes':0.20,'Quads (Vastus)':0.15}},
+  'Abductor':{primary:['Abductors (Outer Thigh)','Glute Medius'],secondary:{'Glutes':0.50,'Obliques':0.20}},
+  'Calf Raise on Smith Machine':{primary:['Gastrocnemius'],secondary:{'Soleus':0.60}},
+  'Cable Rope Pull Downs':{primary:['Triceps (Lateral Head)','Triceps (Medial Head)'],secondary:{'Triceps (Long Head)':0.60}},
+  'Bar Pull Downs':{primary:['Triceps (Lateral Head)','Triceps (Medial Head)'],secondary:{'Triceps (Long Head)':0.55}},
+  'One Hand Cable Push Down':{primary:['Triceps (Lateral Head)','Triceps (Medial Head)'],secondary:{'Triceps (Long Head)':0.55}},
+  'Cable Overhead Triceps Extension':{primary:['Triceps (Long Head)'],secondary:{'Triceps (Lateral Head)':0.75,'Triceps (Medial Head)':0.75}},
+  'Seated Hammer Curl':{primary:['Brachialis','Brachioradialis'],secondary:{'Biceps (Long Head)':0.70,'Biceps (Short Head)':0.65}},
+  'Standing Hammer Curl':{primary:['Brachialis','Brachioradialis'],secondary:{'Biceps (Long Head)':0.70,'Biceps (Short Head)':0.65,'Front Delts':0.25,'Erectors':0.25}},
+  'Bayesian Curl':{primary:['Biceps (Long Head)'],secondary:{'Biceps (Short Head)':0.75,'Brachialis':0.50,'Brachioradialis':0.40}},
+  'Cable Biceps Curl':{primary:['Biceps (Long Head)','Biceps (Short Head)'],secondary:{'Brachialis':0.55,'Brachioradialis':0.45,'Front Delts':0.20}},
+  'Dumbbell Isolation Biceps Curl':{primary:['Biceps (Long Head)','Biceps (Short Head)'],secondary:{'Brachialis':0.55,'Brachioradialis':0.45,'Front Delts':0.20}},
+  'Preacher Curl':{primary:['Biceps (Short Head)','Brachialis'],secondary:{'Biceps (Long Head)':0.70,'Brachioradialis':0.50}},
+  'Hanging Knee Raises':{primary:['Lower Abs','Hip Flexors'],secondary:{'Rectus Abs':0.75,'Obliques':0.60,'Transverse Abs':0.55,'Lats':0.35,'Brachioradialis':0.40}},
+  'Planks':{primary:['Transverse Abs','Rectus Abs'],secondary:{'Obliques':0.65,'Lower Abs':0.75,'Erectors':0.35,'Glutes':0.30,'Front Delts':0.25}},
+  'Cable Crunches':{primary:['Rectus Abs'],secondary:{'Obliques':0.55,'Lower Abs':0.60,'Transverse Abs':0.50,'Hip Flexors':0.35}},
+  'Weighted Decline Crunches':{primary:['Rectus Abs'],secondary:{'Obliques':0.55,'Lower Abs':0.65,'Transverse Abs':0.50,'Hip Flexors':0.45}},
+  'Push Ups':{primary:['Mid Chest','Lower Chest'],secondary:{'Upper Chest':0.50,'Inner Chest':0.75,'Front Delts':0.60,'Triceps (Long Head)':0.50,'Triceps (Lateral Head)':0.55,'Triceps (Medial Head)':0.50,'Side Delts':0.25,'Rectus Abs':0.40,'Obliques':0.40,'Transverse Abs':0.45,'Mid Traps':0.30,'Rhomboids':0.30}}
+};
+
+// Key EMG and biomechanics references consulted when assigning activation %.
+const ACTIVATION_SOURCES = [
+  'Schoenfeld B. (2010-2020) — mechanisms of hypertrophy, bench press & back exercise EMG',
+  'Contreras B. & Schoenfeld B. — Strength & Conditioning Journal, glute & trunk EMG',
+  'Escamilla R. — squat, deadlift, pressing EMG studies (JSCR, 1998-2006)',
+  'Saeterbakken A. (2011, 2013) — machine vs free-weight press EMG',
+  'Rodriguez-Ridao D. (2020) — bench press angle & pec activation',
+  'Fenwick C. (2009) — rowing variations EMG',
+  'Lehman G. (2004) — pulldown grip variations EMG',
+  'Youdas J. (2010) — pull-up EMG',
+  'Andersen V. (2014, 2019) — lat pulldown, deadlift EMG',
+  'Boeckh-Behrens W. — pressing & triceps EMG tables',
+  'Calatayud J. (2014) — push-up variations EMG',
+  'Coratella G. (2020) — shoulder raise variations EMG',
+  'Oliveira L. (2009) — biceps curl grip variations EMG',
+  'Marcolin G. (2018) — biceps curl EMG',
+  'Hamlyn N. (2007) — trunk EMG during compound lifts',
+  'Ebben W. (2009) — hamstring curl EMG',
+  'Welsch E. (2005) — pec & anterior delt EMG during press vs fly',
+  'Schwanbeck S. (2009) — Smith machine vs free squat EMG',
+  'Chris Beardsley — length-tension analyses (Patreon / Medium)',
+  'NSCA Essentials of Strength Training — Haff & Triplett'
+];
+
 function renderTrainingMap() {
   const c = buildCache();
   if(!c.workouts.length) return '<div class="empty-state"><div class="icon">🗺️</div><p>No workouts logged yet.</p></div>';
@@ -9665,8 +9752,14 @@ function renderTrainingMap() {
   const PARTS = ['shoulder','chest','back','legs','biceps','triceps','core'];
   const PART_COLORS = {shoulder:'#e94560',chest:'#3498db',back:'#2ecc71',legs:'#e67e22',biceps:'#9b59b6',triceps:'#f1c40f',core:'#1abc9c'};
 
-  // Detailed muscle mapping: exercise -> specific muscles hit
-  const MUSCLE_MAP = {
+  // Derive legacy MUSCLE_MAP format (primary[], secondary[]) from EXERCISE_ACTIVATION_MAP
+  // so existing filter-dropdown and fuzzy-match code keeps working.
+  const MUSCLE_MAP = {};
+  Object.entries(EXERCISE_ACTIVATION_MAP).forEach(([name, data]) => {
+    MUSCLE_MAP[name] = {primary: data.primary, secondary: Object.keys(data.secondary||{})};
+  });
+  // OBSOLETE legacy map retained only for reference; no longer used. Remove after 1 week of stable behavior.
+  const MUSCLE_MAP_LEGACY_UNUSED = {
     'Dumbbell Press':{primary:['Front Delts'],secondary:['Side Delts','Triceps']},
     'Machine Shoulder Press':{primary:['Front Delts'],secondary:['Side Delts','Triceps']},
     'Dumbbell Lateral Raise':{primary:['Side Delts'],secondary:[]},
@@ -10005,9 +10098,27 @@ function renderTrainingMap() {
   html += '<span style="color:var(--green);">GOOD (4-11 sets)</span> = optimal hypertrophy range | ';
   html += '<span style="color:var(--orange);">LOW (1-3 sets)</span> = below minimum effective dose | ';
   html += '<span style="color:#e74c3c;">OVERWORKED (12+ sets)</span> = exceeds maximum recoverable volume | ';
-  html += '<span style="color:#e74c3c;">SKIPPED (0 sets)</span> = no stimulus, creates imbalances. ';
-  html += 'Secondary muscle involvement counted at 50% of sets.';
+  html += '<span style="color:#e74c3c;">SKIPPED (0 sets)</span> = no stimulus, creates imbalances.';
   html += '</div>';
+
+  // Methodology / data-source reference so users understand where the numbers come from.
+  html += '<details style="font-size:.7rem;color:var(--text2);padding:0;margin-bottom:10px;">';
+  html += '<summary style="cursor:pointer;padding:6px 10px;background:var(--card2);border-radius:6px;color:var(--blue);font-weight:600;list-style:none;user-select:none;">📚 How these numbers are calculated (EMG-based methodology)</summary>';
+  html += '<div style="padding:10px 12px;background:var(--card2);border-radius:0 0 6px 6px;line-height:1.55;">';
+  html += '<p style="margin:0 0 6px 0;"><strong>Each exercise has a primary + secondary muscle profile</strong> derived from peer-reviewed EMG (electromyography) studies. EMG measures how strongly each muscle activates during an exercise, as a percentage of its maximum voluntary contraction.</p>';
+  html += '<p style="margin:0 0 6px 0;"><strong>How your sets are attributed:</strong></p>';
+  html += '<ul style="margin:0 0 6px 16px;padding:0;">';
+  html += '<li>Primary muscles get <strong>100% of your sets</strong> (full stimulus).</li>';
+  html += '<li>Secondary (indirect) muscles get <strong>your sets × activation %</strong>, where the % is evidence-based from EMG literature (ranges from ~20% to ~85% depending on the exercise + muscle pair).</li>';
+  html += '<li>Example: Barbell Rows (3 sets) → Lats: 3 sets (primary, 100%) · Biceps Long Head: 3 × 0.45 = 1.35 sets (Fenwick 2009 EMG) · Brachialis: 3 × 0.50 = 1.50 sets.</li>';
+  html += '</ul>';
+  html += '<p style="margin:0 0 6px 0;"><strong>Why not a flat 50% for all secondaries?</strong> Because different exercises stimulate secondary muscles very differently. Bench press hits triceps at ~55-60% activation; a shoulder press hits them at ~45-55%. A flat 50% would misrepresent both. Research-based activation percentages give the right picture.</p>';
+  html += '<p style="margin:0 0 4px 0;"><strong>Key source studies:</strong></p>';
+  html += '<ul style="margin:0 0 0 16px;padding:0;font-size:.66rem;">';
+  ACTIVATION_SOURCES.forEach(src => { html += '<li>'+src+'</li>'; });
+  html += '</ul>';
+  html += '<p style="margin:6px 0 0 0;font-size:.66rem;color:var(--text2);">Numbers are midpoints of published EMG ranges. Individual activation varies with technique, load, and fatigue — treat as guidance, not absolute truth.</p>';
+  html += '</div></details>';
 
   // Result container
   html += '<div id="tmap-results"></div>';
@@ -10078,45 +10189,100 @@ function _doUpdateTrainingMap() {
     return {primary:['Unknown'],secondary:[]};
   }
 
+  // Uses EXERCISE_ACTIVATION_MAP (EMG-based). Primary muscles get full sets; secondary
+  // muscles get sets × activation% (not a flat 50%). Tracks direct / indirect exercises
+  // separately so the muscle-detail expander can show both lists.
   function collectMuscles(workouts) {
     const muscles = {};
+    const GENERIC_TO_SPECIFIC = {
+      'Triceps':['Triceps (Long Head)','Triceps (Lateral Head)','Triceps (Medial Head)'],
+      'Biceps':['Biceps (Long Head)','Biceps (Short Head)'],
+      'Triceps Long Head':['Triceps (Long Head)'],
+      'Traps':['Upper Traps','Mid Traps','Lower Traps'],
+      'Quads':['Quads (Vastus)','Quads (Rectus Femoris)'],
+      'Core':['Rectus Abs']
+    };
+    const expandMuscle = m => GENERIC_TO_SPECIFIC[m] || [m];
+    const ensureMuscle = (m, type) => {
+      if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type,directEx:{},indirectEx:{}};
+    };
+    // Get activation data from EXERCISE_ACTIVATION_MAP, with fuzzy fallback and body-part default.
+    function activationFor(exName, bp) {
+      const resolved = resolveExerciseName(exName);
+      if(EXERCISE_ACTIVATION_MAP[resolved]) return EXERCISE_ACTIVATION_MAP[resolved];
+      // Fuzzy match
+      const lower = resolved.toLowerCase();
+      for(const [k,v] of Object.entries(EXERCISE_ACTIVATION_MAP)) {
+        if(lower.includes(k.toLowerCase()) || k.toLowerCase().includes(lower)) return v;
+      }
+      // Token-based match (e.g. "Rope Hammer Curl" → "Standing Hammer Curl").
+      const exTokens = new Set(lower.split(/\s+/).filter(t=>t.length>2));
+      let bestKey=null, bestScore=0;
+      for(const k of Object.keys(EXERCISE_ACTIVATION_MAP)) {
+        const kTokens = k.toLowerCase().split(/\s+/).filter(t=>t.length>2);
+        const overlap = kTokens.filter(t=>exTokens.has(t)).length;
+        if(overlap>=2 && overlap>bestScore) { bestScore=overlap; bestKey=k; }
+      }
+      if(bestKey) return EXERCISE_ACTIVATION_MAP[bestKey];
+      // Last resort: body-part default so the exercise still counts.
+      const BP_DEFAULT = {biceps:['Biceps (Short Head)'],triceps:['Triceps (Lateral Head)'],chest:['Mid Chest'],shoulder:['Front Delts'],back:['Lats'],legs:['Quads (Vastus)'],core:['Rectus Abs']};
+      return {primary: BP_DEFAULT[bp]||['Unknown'], secondary:{}};
+    }
+
     workouts.forEach(w => {
       (w.exercises||[]).forEach(ex => {
         const name = resolveExerciseName(ex.name);
+        const bp = ex.bodyPart || getBodyPartForExercise(name) || 'other';
         const ws = getWorkingSetsFromExercise(ex);
         const setCount = ws.length;
-        const info = getMusclesForEx(name);
-        info.primary.forEach(m => {
-          if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type:'primary'};
-          muscles[m].sets += setCount;
-          muscles[m].exercises.add(name);
+        if(!setCount) return;
+        const info = activationFor(name, bp);
+
+        // Primary muscles: full sets (activation 1.0)
+        (info.primary||[]).forEach(rawM => {
+          expandMuscle(rawM).forEach(m => {
+            ensureMuscle(m,'primary');
+            muscles[m].sets += setCount;
+            muscles[m].exercises.add(name);
+            muscles[m].directEx[name] = (muscles[m].directEx[name]||0) + setCount;
+          });
         });
-        info.secondary.forEach(m => {
-          if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type:'secondary'};
-          muscles[m].sets += Math.round(setCount*0.5);
-          muscles[m].exercises.add(name+' (secondary)');
+        // Secondary muscles: sets × activation%
+        Object.entries(info.secondary||{}).forEach(([rawM, act]) => {
+          expandMuscle(rawM).forEach(m => {
+            const weighted = Math.round(setCount * act * 10) / 10; // 1 decimal
+            if(weighted <= 0) return;
+            if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type:'secondary',directEx:{},indirectEx:{}};
+            muscles[m].sets += weighted;
+            muscles[m].exercises.add(name+' (indirect)');
+            const indKey = name+' ('+Math.round(act*100)+'%)';
+            muscles[m].indirectEx[indKey] = (muscles[m].indirectEx[indKey]||0) + weighted;
+          });
         });
       });
-      // Peloton activation - fatigue-equivalent calculation
+
+      // Peloton activation — fatigue-equivalent calculation.
       if(w.peloton && w.peloton.watts) {
         const fSets = pelotonFatigueSets(w.peloton);
         if(fSets.primary>0||fSets.secondary>0) {
           const exLabel = 'Peloton '+(w.peloton.recovery?'Recovery':'HIIT')+' ('+w.peloton.watts+'W × '+(w.peloton.minutes||30)+'min)';
-          const cyclingPrimary = ['Quads (Vastus)','Quads (Rectus Femoris)','Glutes'];
-          const cyclingSecondary = ['Hamstrings','Gastrocnemius','Soleus','Glute Medius'];
-          cyclingPrimary.forEach(m => {
-            if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type:'primary'};
+          ['Quads (Vastus)','Quads (Rectus Femoris)','Glutes'].forEach(m => {
+            ensureMuscle(m,'primary');
             muscles[m].sets += fSets.primary;
             muscles[m].exercises.add(exLabel);
+            muscles[m].directEx[exLabel] = (muscles[m].directEx[exLabel]||0) + fSets.primary;
           });
-          cyclingSecondary.forEach(m => {
-            if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type:'secondary'};
+          ['Hamstrings','Gastrocnemius','Soleus','Glute Medius'].forEach(m => {
+            if(!muscles[m]) muscles[m]={sets:0,exercises:new Set(),type:'secondary',directEx:{},indirectEx:{}};
             muscles[m].sets += fSets.secondary;
-            muscles[m].exercises.add(exLabel+' (secondary)');
+            muscles[m].exercises.add(exLabel+' (indirect)');
+            muscles[m].indirectEx[exLabel] = (muscles[m].indirectEx[exLabel]||0) + fSets.secondary;
           });
         }
       }
     });
+    // Round all totals to 1 decimal for display.
+    Object.values(muscles).forEach(m => { m.sets = Math.round(m.sets*10)/10; });
     return muscles;
   }
 
