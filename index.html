@@ -9785,10 +9785,31 @@ function renderTrainingMap() {
     return muscles;
   }
 
-  function renderMuscleBreakdown(muscles, title, weekCount) {
+  function renderMuscleBreakdown(muscles, title, weekCount, filteredWorkouts) {
     const entries = Object.entries(muscles).sort((a,b)=>b[1].sets-a[1].sets);
     if(!entries.length) return '<div style="color:var(--text2);font-size:.85rem;">No data.</div>';
     const weekDiv = weekCount||1;
+    // Compute body-part-level direct + indirect totals using the SAME logic as Volume Dashboard
+    // (getIndirectBodyParts + exercise.bodyPart) so the Training Map region tiles match VD numbers.
+    const bpDirect = {}, bpIndirect = {};
+    (filteredWorkouts||[]).forEach(w => {
+      (w.exercises||[]).forEach(ex => {
+        const name = resolveExerciseName(ex.name);
+        const bp = ex.bodyPart || getBodyPartForExercise(name) || 'other';
+        const ws = getWorkingSetsFromExercise(ex);
+        bpDirect[bp] = (bpDirect[bp]||0) + ws.length;
+        const ind = getIndirectBodyParts(name, bp);
+        Object.entries(ind).forEach(([bpI, mul]) => {
+          bpIndirect[bpI] = (bpIndirect[bpI]||0) + ws.length * mul;
+        });
+      });
+      if(w.peloton && w.peloton.watts && !w.peloton.recovery) {
+        const fSets = Math.round((w.peloton.minutes||30)/5);
+        bpDirect['legs'] = (bpDirect['legs']||0) + fSets;
+      }
+    });
+    // Map region name → body part key used by Volume Dashboard.
+    const REGION_TO_BP = {'Chest':'chest','Shoulders':'shoulder','Back':'back','Biceps':'biceps','Triceps':'triceps','Quads':'legs','Glutes & Hips':'legs','Hamstrings':'legs','Calves':'legs','Core':'core'};
     // Single, status-based palette — same across every region so you can scan for problems at a glance.
     // Green = inside the optimal hypertrophy range. Amber = under-dosed. Red = over-dosed. Gray = untrained.
     // Standards: 4-11 working sets/wk per muscle head is the evidence-backed sweet spot for hypertrophy.
@@ -9856,23 +9877,44 @@ function renderTrainingMap() {
     }
 
     // === 2. Region summary strip. Forced to a single row on every screen size. ===
-    // 10 equal columns with minmax(0,1fr) lets each tile shrink below its content width on narrow screens.
-    h += '<div style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:3px;margin-bottom:14px;">';
+    // Uses body-part totals (direct + indirect) so numbers match the Volume Dashboard.
+    // Status thresholds: <10 LOW, 10-20 GOOD, 20+ OVERWORKED (body-part weekly targets).
+    function statusForBp(wkSets) {
+      if(wkSets<=0) return STATUS.skipped;
+      if(wkSets>=20) return STATUS.over;
+      if(wkSets>=10) return STATUS.good;
+      if(wkSets>=1) return STATUS.low;
+      return STATUS.skipped;
+    }
+    h += '<div style="display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:3px;margin-bottom:6px;">';
+    // Group legs regions together for body-part totals, but show each as its own tile.
+    const legsTotal = (bpDirect['legs']||0) + (bpIndirect['legs']||0);
     Object.entries(regions).forEach(([region, muscleNames]) => {
       if(region==='Other') return;
-      const present = muscleNames.filter(m=>muscles[m]);
-      const totalWeekly = present.reduce((sum,m)=>sum+(muscles[m].sets/weekDiv),0);
-      const avgWeekly = present.length ? totalWeekly/present.length : 0;
-      const st = present.length ? statusFor(avgWeekly) : STATUS.skipped;
+      const bpKey = REGION_TO_BP[region];
+      // Legs sub-regions (Quads/Glutes&Hips/Hamstrings/Calves): total legs volume split by per-head from MUSCLE_MAP.
+      const isLegsSub = bpKey==='legs' && region!=='Legs';
+      let directSets, indirectSets;
+      if(isLegsSub) {
+        // Use per-muscle data from MUSCLE_MAP for leg sub-regions.
+        const present = muscleNames.filter(m=>muscles[m]);
+        directSets = present.reduce((s,m)=> s + (muscles[m].type==='primary'?muscles[m].sets:0), 0)/weekDiv;
+        indirectSets = present.reduce((s,m)=> s + (muscles[m].type==='secondary'?muscles[m].sets:0), 0)/weekDiv;
+      } else {
+        directSets = (bpDirect[bpKey]||0)/weekDiv;
+        indirectSets = (bpIndirect[bpKey]||0)/weekDiv;
+      }
+      const totalSets = Math.round((directSets+indirectSets)*10)/10;
+      const st = totalSets>0 ? statusForBp(totalSets) : STATUS.skipped;
       const shortLabel = REGION_SHORT[region] || region;
-      h += '<div style="padding:5px 2px;background:'+st.bg+';border:1px solid '+st.color+';border-radius:5px;text-align:center;min-width:0;overflow:hidden;">';
+      h += '<div title="'+region+': '+Math.round(directSets*10)/10+' direct + '+Math.round(indirectSets*10)/10+' indirect" style="padding:5px 2px;background:'+st.bg+';border:1px solid '+st.color+';border-radius:5px;text-align:center;min-width:0;overflow:hidden;">';
       h += '<div style="font-size:.62rem;color:var(--text);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+shortLabel+'</div>';
-      h += '<div style="font-size:.95rem;font-weight:800;color:'+st.color+';line-height:1.1;margin-top:1px;">'+avgWeekly.toFixed(1)+'</div>';
+      h += '<div style="font-size:.95rem;font-weight:800;color:'+st.color+';line-height:1.1;margin-top:1px;">'+totalSets.toFixed(1)+'</div>';
       h += '<div style="font-size:.52rem;color:'+st.color+';font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+st.label+'</div>';
       h += '</div>';
     });
     h += '</div>';
-    h += '<div style="font-size:.62rem;color:var(--text2);margin-bottom:12px;text-align:center;">Average sets/week per muscle head.</div>';
+    h += '<div style="font-size:.62rem;color:var(--text2);margin-bottom:12px;text-align:center;">Total body-part sets/week (direct + indirect). Hover a tile for the breakdown. <span style="color:var(--text2);">Target: 10–20 sets/week.</span></div>';
 
     Object.entries(regions).forEach(([region, muscleNames]) => {
       const regionMuscles = muscleNames.filter(m=>muscles[m]).map(m=>({name:m,...muscles[m],exercises:Array.from(muscles[m].exercises)}));
@@ -10330,7 +10372,7 @@ function _doUpdateTrainingMap() {
     // === Full muscle breakdown ===
     html += '<div class="card"><h3>'+rangeLabel+' ('+filtered.length+' sessions)</h3>';
     const muscles = collectMuscles(filtered);
-    html += fns.renderMuscleBreakdown(muscles, rangeLabel, weekDiv);
+    html += fns.renderMuscleBreakdown(muscles, rangeLabel, weekDiv, filtered);
     html += '</div>';
   }
 
