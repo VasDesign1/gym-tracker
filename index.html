@@ -10080,7 +10080,7 @@ function renderTrainingMap() {
         h += '<div style="height:100%;width:'+pct+'%;background:'+st.color+';border-radius:6px;"></div>';
         h += '</div>';
         if(hasDetail) {
-          h += '<div style="font-size:.62rem;color:var(--highlight);margin-top:2px;">👆 Click for full breakdown ('+directEntries.length+' direct, '+indirectEntries.length+' indirect)</div>';
+          h += '<div style="font-size:.62rem;color:var(--highlight);margin-top:2px;">Click for full breakdown ('+directEntries.length+' direct, '+indirectEntries.length+' indirect)</div>';
         }
         h += '</div>';
       });
@@ -10424,7 +10424,7 @@ function _doUpdateTrainingMap() {
         const parts = new Set();
         dayW.forEach(w=>(w.bodyParts||[]).forEach(p=>parts.add(p)));
         parts.forEach(p => {
-          html += '<div style="font-size:.58rem;color:var(--text);margin-top:2px;text-transform:capitalize;">'+p.slice(0,4)+'</div>';
+          html += '<div style="font-size:.58rem;color:var(--text);margin-top:2px;text-transform:capitalize;word-break:break-word;">'+p+'</div>';
         });
         if(dayW.some(w=>w.peloton&&w.peloton.watts)) html += '<div style="font-size:.55rem;color:var(--text2);margin-top:1px;">HIIT</div>';
       } else {
