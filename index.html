@@ -4110,7 +4110,8 @@ function saveCalFieldSingle(dateStr, globalIdx, exIdx, setKey) {
   const newKey = typeInp ? typeInp.value : setKey;
 
   if (newKey !== setKey) {
-    // Rename: rebuild sets preserving order, replacing old key with new key
+    // Rename: rebuild sets, replacing old key with new key, then reorder
+    // so warmups appear first, working sets next, finishers last.
     const newSets = {};
     Object.keys(ex.sets).forEach(k => {
       if (k === setKey) {
@@ -4119,7 +4120,7 @@ function saveCalFieldSingle(dateStr, globalIdx, exIdx, setKey) {
         newSets[k] = ex.sets[k];
       }
     });
-    ex.sets = newSets;
+    ex.sets = reorderSetsObj(newSets);
   } else {
     ex.sets[setKey].kg = newKg;
     ex.sets[setKey].reps = newReps;
@@ -4199,7 +4200,7 @@ function saveCalFieldMulti(dateStr, globalIdx, exIdx) {
     showToast('Two sets have the same type — please choose unique set types');
     return;
   }
-  ex.sets = newSets;
+  ex.sets = reorderSetsObj(newSets);
 
   saveWorkouts(workouts);
   showToast('Updated successfully');
@@ -5958,8 +5959,20 @@ function renderExerciseInsights(workouts, exName, period) {
       </div>`;
     }
     periodHtml += `<table class="summary-table"><thead><tr><th>Period</th><th>Date</th><th>Set</th>${isCable && hasDoublePulley ? '<th>Pulley</th>' : ''}<th>${isBW ? 'Weight' : 'Weight (kg)'}</th><th>${repsLabel}</th>${isBW ? '' : '<th>Volume</th>'}</tr></thead><tbody>`;
+    // Sort within each group: same date → warmups first, then working sets, then finishers.
+    const setTypeRank = k => k.startsWith('warmup') ? 0 : k.startsWith('finisher') ? 2 : 1;
+    const setTypeNum = k => {
+      const m = k.match(/\d+$/);
+      if (m) return parseInt(m[0], 10);
+      return 1; // bare 'warmup', 'set', 'finisher' → 1
+    };
     periodKeys.forEach(pk => {
-      const g = grouped[pk];
+      const g = [...grouped[pk]].sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        const ra = setTypeRank(a.setType), rb = setTypeRank(b.setType);
+        if (ra !== rb) return ra - rb;
+        return setTypeNum(a.setType) - setTypeNum(b.setType);
+      });
       g.forEach((r, i) => {
         const displayReps = isPlanks ? formatPlankSeconds(r.reps) : r.reps;
         let displayKg;
@@ -6952,9 +6965,10 @@ function getWorkingSetsFromExercise(ex) {
   const all = entries.map(([k,v])=>({key:k,kg:parseFloat(v.kg)||0,reps:parseFloat(v.reps)||0})).filter(s=>s.reps>0);
   if(all.length<=1) return all;
   const maxKg = Math.max(...all.map(s=>s.kg));
+  // Warm-ups are excluded from analysis; finishers ARE included (they are real work
+  // and should count for e1RM, volume load, intensity and coach insights).
   return all.filter(s => {
     if(s.key.startsWith('warmup')) return false;
-    if(s.key.startsWith('finisher')) return false;
     if(maxKg>0 && s.kg < maxKg*0.55 && all.indexOf(s)<2) return false;
     return true;
   });
