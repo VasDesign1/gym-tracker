@@ -1322,21 +1322,66 @@ function gymCollectAllUserKeys() {
 }
 
 let _lastPushedModified = 0;
-function gymPushToCloud() {
+function gymPushToCloud(opts) {
   if (!_syncEnabled || !_fbDocRef) return Promise.resolve(false);
   // Cancel any pending debounced push since we're pushing right now
   if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
   gymSyncStatus('syncing');
   const data = gymCollectAllUserKeys();
   const ts = Date.now();
-  return _fbDocRef.set({data:data,lastModified:ts,user:_activeUser},{merge:false})
-    .then(() => {
-      // Use the AUTH-wrapped setItem (already in scope) but bypass our sync hook
-      const _bypassSet = _origAuthSet;
-      _bypassSet('gym_last_modified', String(ts));
-      _lastPushedModified = ts;
-      gymSyncStatus('idle');
-      return true;
+  const force = opts && opts.force; // explicit user delete bypasses shrinkage guard
+
+  // SAFETY: before overwriting cloud, fetch its current state. If another
+  // device pushed since our last sync, OR if our local data is dramatically
+  // smaller than cloud's, abort the push and pull instead. This prevents a
+  // stale tab from clobbering newer data on another device.
+  return _fbDocRef.get({source:'server'})
+    .then(doc => {
+      if (doc && doc.exists) {
+        const remote = doc.data() || {};
+        const remoteModified = remote.lastModified || 0;
+        const remoteData = remote.data || {};
+
+        // Guard 1: cloud was updated by another device since we last synced
+        if (remoteModified > _lastPushedModified && Object.keys(remoteData).length > 0) {
+          console.warn('[Sync] Push aborted - cloud is newer (', remoteModified, 'vs last known', _lastPushedModified, '). Pulling instead.');
+          _gymApplyRemoteData(remoteData, remoteModified);
+          _lastPushedModified = remoteModified;
+          _gymRerenderActiveView();
+          if (typeof showToast === 'function') showToast('Cloud was newer - pulled latest instead', 'info');
+          gymSyncStatus('idle');
+          return false;
+        }
+
+        // Guard 2: shrinkage check - workouts array shouldn't shrink unexpectedly
+        if (!force) {
+          try {
+            const localW = JSON.parse(data['gym_workouts'] || '[]');
+            const cloudW = JSON.parse(remoteData['gym_workouts'] || '[]');
+            if (Array.isArray(localW) && Array.isArray(cloudW)
+                && cloudW.length > 0
+                && localW.length < cloudW.length - 2) {
+              console.warn('[Sync] Push aborted - local has', localW.length, 'workouts, cloud has', cloudW.length, '. Pulling instead.');
+              _gymApplyRemoteData(remoteData, remoteModified);
+              _lastPushedModified = remoteModified;
+              _gymRerenderActiveView();
+              if (typeof showToast === 'function') showToast('Local data looked too small - restored from cloud', 'info');
+              gymSyncStatus('idle');
+              return false;
+            }
+          } catch(e) { /* ignore parse errors */ }
+        }
+      }
+
+      // Safe to push
+      return _fbDocRef.set({data:data,lastModified:ts,user:_activeUser},{merge:false})
+        .then(() => {
+          const _bypassSet = _origAuthSet;
+          _bypassSet('gym_last_modified', String(ts));
+          _lastPushedModified = ts;
+          gymSyncStatus('idle');
+          return true;
+        });
     })
     .catch(e => { console.error('[Sync] Push failed:',e); gymSyncStatus('error'); return false; });
 }
@@ -1377,11 +1422,18 @@ function gymPullFromCloud() {
         Object.entries(remoteData).forEach(([k,v]) => { _bypassSet(k, v); });
         _bypassSet('gym_last_modified', String(remoteModified));
         _bypassSet('gym_seed_imported_v1', '1');
+        // Mark that our local now matches cloud at this timestamp, so the
+        // next push's "is cloud newer than what I last knew?" check passes.
+        _lastPushedModified = remoteModified;
         gymSyncStatus('idle');
         return true;
       } else if (localModified > remoteModified && Object.keys(remoteData).length === 0) {
         // Local has data but remote is empty
         return gymPushToCloud().then(() => false);
+      } else {
+        // Local matches cloud (or cloud has no useful update). Mark sync state
+        // so the next push's freshness check doesn't unnecessarily abort.
+        if (remoteModified > _lastPushedModified) _lastPushedModified = remoteModified;
       }
       gymSyncStatus('idle');
       return false;
@@ -1402,9 +1454,11 @@ function gymSchedulePush() {
 
 // Helper used by user-facing actions (delete, edit, save) that want explicit
 // cloud confirmation. Cancels the debounced push and pushes right now.
-function gymPushNow() {
+// Pass {force:true} from confirmed destructive actions (e.g. delete workout)
+// so the shrinkage safety guard doesn't block a legitimate mass delete.
+function gymPushNow(opts) {
   if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
-  return gymPushToCloud();
+  return gymPushToCloud(opts);
 }
 
 // ----- Real-time cloud listener (so the OTHER device updates without a refresh) -----
@@ -2422,16 +2476,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // Wait for Firebase Auth state to restore before pulling (rules require auth)
   function _doInitialPull() {
     if (typeof gymPullFromCloud !== 'function') { _initialPullDone = true; return; }
-    if (sessionStorage.getItem('gym_pulled_this_session')) { _initialPullDone = true; return; }
-    sessionStorage.setItem('gym_pulled_this_session','1');
+    // ALWAYS pull on every load. Previously this was skipped within a session
+    // (sessionStorage flag) as a perf optimization, but that caused data loss:
+    // a refreshed stale tab would never learn about a phone-side update and
+    // would happily overwrite cloud on the next user action.
+    // Also: ALWAYS attach the live listener up-front, independent of pull
+    // success. Pull may fail (auth/network) but we still want to receive
+    // remote-change notifications when they arrive.
+    if (typeof gymStartCloudListener === 'function') gymStartCloudListener();
     gymPullFromCloud().then(updated => {
       if (updated) {
         _gymRerenderActiveView();
         showToast && showToast('Data synced from cloud (' + window.gymCurrentUser + ')');
       }
-      // Start the real-time listener so this tab auto-updates whenever
-      // another device pushes a change.
-      if (typeof gymStartCloudListener === 'function') gymStartCloudListener();
     }).catch(e => { console.error('[Sync] initial pull failed:',e); _initialPullDone = true; });
   }
   if (typeof firebase !== 'undefined' && firebase.auth) {
@@ -4905,10 +4962,11 @@ function deleteWorkout(dateStr) {
   renderCalendar();
   // Push the deletion to the cloud immediately and confirm — never trust
   // the debounced push for destructive actions, since users frequently close
-  // the tab right after deleting.
+  // the tab right after deleting. force:true bypasses the shrinkage guard
+  // since the user explicitly confirmed.
   showToast('Deleting & syncing to cloud...', 'info');
   if (typeof gymPushNow === 'function') {
-    gymPushNow().then(ok => {
+    gymPushNow({force:true}).then(ok => {
       if (ok === false) showToast('⚠ Deleted locally, but CLOUD SYNC FAILED. The deletion may not appear on other devices.', 'error');
       else showToast('✓ Workout(s) deleted & synced', 'success');
     }).catch(e => {
@@ -4933,7 +4991,7 @@ function deleteWorkoutByIndex(globalIdx) {
   // Same explicit cloud-confirm as deleteWorkout above.
   showToast('Deleting & syncing to cloud...', 'info');
   if (typeof gymPushNow === 'function') {
-    gymPushNow().then(ok => {
+    gymPushNow({force:true}).then(ok => {
       if (ok === false) showToast('⚠ Deleted locally, but CLOUD SYNC FAILED. The deletion may not appear on other devices.', 'error');
       else showToast('✓ Workout deleted & synced', 'success');
     }).catch(e => {
