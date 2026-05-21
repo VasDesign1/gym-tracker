@@ -2331,10 +2331,18 @@ function restoreWorkoutById(id) {
   return _rawSaveWorkouts(raw);
 }
 function permanentlyDeleteWorkoutById(id) {
+  // We can't just splice the tombstone out: the next push would pull cloud,
+  // merge by id, and cloud's still-recent tombstone would beat our absence,
+  // re-adding it. Instead, age the tombstone past the 30-day GC window AND
+  // bump lastEditedAt so the aged version wins the per-id merge. After the
+  // push lands, every device GCs it on next load.
   const raw = _rawGetWorkouts();
-  const after = raw.filter(w => w.id !== id);
-  if (after.length === raw.length) return false;
-  return _rawSaveWorkouts(after);
+  const w = raw.find(x => x.id === id);
+  if (!w) return false;
+  w.deleted = true;
+  w.deletedAt = Date.now() - TOMBSTONE_RETENTION_MS - 86400000; // 31 days ago
+  w.lastEditedAt = Date.now();
+  return _rawSaveWorkouts(raw);
 }
 
 // Per-workout merge. Bulletproof: _ensureWorkoutIds runs on both sides
@@ -4261,11 +4269,21 @@ function restoreDeletedWorkout(id) {
   setTimeout(openRecentlyDeletedModal, 50);
 }
 function forgetDeletedWorkout(id) {
-  if (!confirm('Permanently delete this workout from this device? It will not be recoverable.')) return;
+  if (!confirm('Permanently delete this workout? It will be removed from this device and from every other device on their next sync. This cannot be undone.')) return;
   if (typeof permanentlyDeleteWorkoutById !== 'function' || !permanentlyDeleteWorkoutById(id)) return;
-  showToast && showToast('Workout permanently deleted', 'success');
-  if (typeof gymPushNow === 'function') gymPushNow({force:true});
-  setTimeout(openRecentlyDeletedModal, 50);
+  // Push the aged tombstone to cloud BEFORE GCing locally, so cloud has the
+  // age-past-retention version that all devices will GC. Then GC locally and
+  // re-render the modal.
+  const finish = () => {
+    if (typeof gcTombstones === 'function') gcTombstones();
+    showToast && showToast('Workout permanently deleted', 'success');
+    openRecentlyDeletedModal();
+  };
+  if (typeof gymPushNow === 'function') {
+    gymPushNow({force:true}).then(finish).catch(finish);
+  } else {
+    finish();
+  }
 }
 
 function setCalPulleyInPanel(globalIdx, exIdx, type) {
