@@ -687,7 +687,10 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 
   <!-- CALENDAR VIEW -->
   <div id="view-calendar" class="view">
-    <h2>Workout Calendar</h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <span>Workout Calendar</span>
+      <button class="btn btn-secondary btn-sm" style="font-size:.78rem;padding:5px 12px;" onclick="openRecentlyDeletedModal()" title="Restore recently deleted workouts (kept 30 days)">🗑 Recently Deleted</button>
+    </h2>
     <div class="card">
       <div class="cal-header">
         <button class="btn btn-secondary btn-sm" id="cal-prev">&larr; Prev</button>
@@ -1324,57 +1327,38 @@ function gymCollectAllUserKeys() {
 let _lastPushedModified = 0;
 function gymPushToCloud(opts) {
   if (!_syncEnabled || !_fbDocRef) return Promise.resolve(false);
-  // Cancel any pending debounced push since we're pushing right now
   if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
   gymSyncStatus('syncing');
-  const data = gymCollectAllUserKeys();
-  const ts = Date.now();
-  const force = opts && opts.force; // explicit user delete bypasses shrinkage guard
 
-  // SAFETY: before overwriting cloud, fetch its current state. If another
-  // device pushed since our last sync, OR if our local data is dramatically
-  // smaller than cloud's, abort the push and pull instead. This prevents a
-  // stale tab from clobbering newer data on another device.
+  // MERGE-ON-PUSH model: per-workout merge keyed by `id`, taking whichever
+  // side has the higher `lastEditedAt`. This is symmetric and additive — a
+  // stale tab can no longer wipe newer data because it cannot "win" against
+  // a higher-timestamped workout on cloud. Tombstones (deleted:true) carry
+  // a deletion timestamp in lastEditedAt and propagate the same way.
   return _fbDocRef.get({source:'server'})
     .then(doc => {
+      let remoteRawWorkouts = [];
+      let remoteData = {};
       if (doc && doc.exists) {
         const remote = doc.data() || {};
-        const remoteModified = remote.lastModified || 0;
-        const remoteData = remote.data || {};
-
-        // Guard 1: cloud was updated by another device since we last synced
-        if (remoteModified > _lastPushedModified && Object.keys(remoteData).length > 0) {
-          console.warn('[Sync] Push aborted - cloud is newer (', remoteModified, 'vs last known', _lastPushedModified, '). Pulling instead.');
-          _gymApplyRemoteData(remoteData, remoteModified);
-          _lastPushedModified = remoteModified;
-          _gymRerenderActiveView();
-          if (typeof showToast === 'function') showToast('Cloud was newer - pulled latest instead', 'info');
-          gymSyncStatus('idle');
-          return false;
-        }
-
-        // Guard 2: shrinkage check - workouts array shouldn't shrink unexpectedly
-        if (!force) {
-          try {
-            const localW = JSON.parse(data['gym_workouts'] || '[]');
-            const cloudW = JSON.parse(remoteData['gym_workouts'] || '[]');
-            if (Array.isArray(localW) && Array.isArray(cloudW)
-                && cloudW.length > 0
-                && localW.length < cloudW.length - 2) {
-              console.warn('[Sync] Push aborted - local has', localW.length, 'workouts, cloud has', cloudW.length, '. Pulling instead.');
-              _gymApplyRemoteData(remoteData, remoteModified);
-              _lastPushedModified = remoteModified;
-              _gymRerenderActiveView();
-              if (typeof showToast === 'function') showToast('Local data looked too small - restored from cloud', 'info');
-              gymSyncStatus('idle');
-              return false;
-            }
-          } catch(e) { /* ignore parse errors */ }
-        }
+        remoteData = remote.data || {};
+        try { remoteRawWorkouts = JSON.parse(remoteData.gym_workouts || '[]'); } catch(e) {}
       }
-
-      // Safe to push
-      return _fbDocRef.set({data:data,lastModified:ts,user:_activeUser},{merge:false})
+      // Merge gym_workouts per-id and persist locally BEFORE pushing, so the
+      // local UI ends up in sync with what we're about to upload.
+      const localRawWorkouts = _rawGetWorkouts();
+      const merged = mergeWorkouts(localRawWorkouts, remoteRawWorkouts);
+      const mergedJson = JSON.stringify(merged);
+      if (mergedJson !== JSON.stringify(localRawWorkouts)) {
+        // _origAuthSet bypasses the sync hook so this internal write does NOT
+        // re-trigger gymSchedulePush() in a feedback loop.
+        _origAuthSet('gym_workouts', mergedJson);
+        _gymRerenderActiveView();
+      }
+      // Build the full push payload from local (now-merged) state.
+      const data = gymCollectAllUserKeys();
+      const ts = Date.now();
+      return _fbDocRef.set({data:data, lastModified:ts, user:_activeUser}, {merge:false})
         .then(() => {
           const _bypassSet = _origAuthSet;
           _bypassSet('gym_last_modified', String(ts));
@@ -1404,35 +1388,19 @@ function gymPullFromCloud() {
 
       _initialPullDone = true;
 
-      if (remoteModified > localModified && Object.keys(remoteData).length > 0) {
-        // Remote is newer - replace local (preserve seed flag and last_modified)
-        const _bypassSet = _origAuthSet;
-        const prefix = _activeUser + '_';
-        const PRESERVE = ['gym_seed_imported_v1','gym_last_modified'];
-        const toRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith(prefix)) {
-            const gk = k.slice(prefix.length);
-            if (gk.startsWith('gym_') && PRESERVE.indexOf(gk) === -1) toRemove.push(k);
-          }
-        }
-        toRemove.forEach(k => { try { localStorage.removeItem(k.slice(prefix.length)); } catch(e){} });
-        // Write remote data via auth wrapper (which prefixes correctly)
-        Object.entries(remoteData).forEach(([k,v]) => { _bypassSet(k, v); });
-        _bypassSet('gym_last_modified', String(remoteModified));
-        _bypassSet('gym_seed_imported_v1', '1');
-        // Mark that our local now matches cloud at this timestamp, so the
-        // next push's "is cloud newer than what I last knew?" check passes.
+      // Always merge with remote (per-workout for gym_workouts, last-writer-
+      // wins for other keys). Even if cloud's lastModified is older, it may
+      // still contain workouts that local doesn't have — merge handles that
+      // additively without losing local changes.
+      if (Object.keys(remoteData).length > 0) {
+        _gymApplyRemoteData(remoteData, Math.max(remoteModified, localModified));
         _lastPushedModified = remoteModified;
         gymSyncStatus('idle');
         return true;
-      } else if (localModified > remoteModified && Object.keys(remoteData).length === 0) {
+      } else if (localModified > remoteModified) {
         // Local has data but remote is empty
         return gymPushToCloud().then(() => false);
       } else {
-        // Local matches cloud (or cloud has no useful update). Mark sync state
-        // so the next push's freshness check doesn't unnecessarily abort.
         if (remoteModified > _lastPushedModified) _lastPushedModified = remoteModified;
       }
       gymSyncStatus('idle');
@@ -1478,19 +1446,25 @@ function _gymRerenderActiveView() {
 }
 
 function _gymApplyRemoteData(remoteData, remoteModified) {
+  // MERGE-ON-APPLY: gym_workouts is merged per-id with local; other keys
+  // take remote (last-writer-wins for settings/profile/logs). We no longer
+  // wipe local first — that's what was causing pending local edits to be
+  // discarded when cloud delivered an unrelated update from another device.
   const _bypassSet = _origAuthSet;
-  const prefix = _activeUser + '_';
-  const PRESERVE = ['gym_seed_imported_v1','gym_last_modified'];
-  const toRemove = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith(prefix)) {
-      const gk = k.slice(prefix.length);
-      if (gk.startsWith('gym_') && PRESERVE.indexOf(gk) === -1) toRemove.push(k);
-    }
+  // Workouts: per-id merge
+  if (remoteData.gym_workouts !== undefined) {
+    let remoteRaw = [];
+    try { remoteRaw = JSON.parse(remoteData.gym_workouts || '[]'); } catch(e) {}
+    const localRaw = _rawGetWorkouts();
+    const merged = mergeWorkouts(localRaw, remoteRaw);
+    _bypassSet('gym_workouts', JSON.stringify(merged));
   }
-  toRemove.forEach(k => { try { localStorage.removeItem(k.slice(prefix.length)); } catch(e){} });
-  Object.entries(remoteData).forEach(([k,v]) => { _bypassSet(k, v); });
+  // Other keys: take remote. Skip keys we manage locally / never sync.
+  const NEVER_OVERWRITE = ['gym_workouts','gym_seed_imported_v1','gym_last_modified','gym_migration_v2','gym_migration_version'];
+  Object.entries(remoteData).forEach(([k,v]) => {
+    if (NEVER_OVERWRITE.indexOf(k) !== -1) return;
+    _bypassSet(k, v);
+  });
   _bypassSet('gym_last_modified', String(remoteModified));
   _bypassSet('gym_seed_imported_v1', '1');
 }
@@ -2201,12 +2175,25 @@ function _cleanWorkoutAngles(workouts) {
   }
   return workouts;
 }
-function getWorkouts() {
+// ===================== WORKOUTS: TOMBSTONE-AWARE STORAGE =====================
+// Storage model:
+// - All workouts (active + tombstones) live in localStorage 'gym_workouts'.
+// - Each workout has stable `id` and `lastEditedAt` (added by migration v2).
+// - Deleted workouts get `deleted:true, deletedAt:<ts>` rather than being
+//   spliced out, so the deletion can sync across devices and a 30-day
+//   recovery window is possible.
+// - getWorkouts() returns ACTIVE workouts (filters tombstones).
+//   For tombstone-aware code (sync, recovery UI), use _rawGetWorkouts().
+// - saveWorkouts(active) preserves tombstones already in storage and
+//   auto-bumps lastEditedAt on any workout whose content changed.
+const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function _rawGetWorkouts() {
   try {
     return _cleanWorkoutAngles(JSON.parse(localStorage.getItem('gym_workouts') || '[]'));
   } catch(e) {
     console.error('Corrupt workout data in localStorage:', e);
-    showToast('Warning: workout data was corrupted. Attempting recovery...');
+    if (typeof showToast === 'function') showToast('Warning: workout data was corrupted. Attempting recovery...');
     try {
       const raw = localStorage.getItem('gym_workouts');
       localStorage.setItem('gym_workouts_backup_corrupt', raw);
@@ -2215,11 +2202,8 @@ function getWorkouts() {
     return [];
   }
 }
-function saveWorkouts(data) {
-  // Returns true if the write was verified to have actually persisted to localStorage,
-  // false otherwise. Callers (especially user-initiated saves) should check the return value
-  // and surface a real error if it's false — never assume the write succeeded.
-  const json = JSON.stringify(data);
+function _rawSaveWorkouts(all) {
+  const json = JSON.stringify(all);
   try {
     localStorage.setItem('gym_workouts', json);
   } catch(e) {
@@ -2227,9 +2211,6 @@ function saveWorkouts(data) {
     if (typeof showToast === 'function') showToast('⚠ SAVE FAILED — storage error: ' + ((e && e.message) || 'unknown') + '. Your data was NOT saved.', 'error');
     return false;
   }
-  // Read-back verification: confirm the bytes are actually there.
-  // This catches silent failures (iOS Safari private mode, ITP eviction, quota issues,
-  // tab being killed mid-write, etc.) that don't throw but also don't persist.
   let readBack;
   try { readBack = localStorage.getItem('gym_workouts'); } catch(e) { readBack = null; }
   if (readBack !== json) {
@@ -2241,10 +2222,189 @@ function saveWorkouts(data) {
   return true;
 }
 
+function getWorkouts() {
+  return _rawGetWorkouts().filter(w => !w.deleted);
+}
+function getDeletedWorkouts() {
+  // Tombstones not yet garbage-collected (within 30-day retention window).
+  const cutoff = Date.now() - TOMBSTONE_RETENTION_MS;
+  return _rawGetWorkouts().filter(w => w.deleted && (w.deletedAt || 0) >= cutoff);
+}
+
+// Stable deterministic id: wk_<date>_<index-among-same-date-workouts>.
+// Two devices migrating independently produce identical ids for the same
+// workout (since the workout history is the same after sync).
+function _assignDeterministicIds(raw) {
+  const counts = {};
+  raw.forEach(w => {
+    if (w.id) return;
+    const date = w.date || 'unknown';
+    const idx = counts[date] || 0;
+    counts[date] = idx + 1;
+    w.id = 'wk_' + date + '_' + idx;
+  });
+}
+
+function saveWorkouts(activeWorkouts) {
+  // Re-fetch raw storage so we can preserve tombstones and detect per-workout
+  // changes to bump lastEditedAt only for what actually changed.
+  const raw = _rawGetWorkouts();
+  const oldById = new Map();
+  const tombstones = [];
+  raw.forEach(w => {
+    if (w.deleted) tombstones.push(w);
+    else if (w.id) oldById.set(w.id, w);
+  });
+  const now = Date.now();
+  // Ensure every active workout has an id (defensive — migration should have set them).
+  _assignDeterministicIds(activeWorkouts);
+  // Detect content changes and bump lastEditedAt on changed/new workouts.
+  activeWorkouts.forEach(w => {
+    const old = oldById.get(w.id);
+    if (!old) {
+      // New workout (not in raw storage yet, or has a brand new id) — stamp now.
+      w.lastEditedAt = now;
+      return;
+    }
+    // Compare content, ignoring lastEditedAt itself.
+    const cloneNoTs = (o) => { const c = Object.assign({}, o); delete c.lastEditedAt; return c; };
+    if (JSON.stringify(cloneNoTs(old)) !== JSON.stringify(cloneNoTs(w))) {
+      w.lastEditedAt = now;
+    }
+    // (Unchanged workout keeps its prior lastEditedAt.)
+  });
+  return _rawSaveWorkouts([...activeWorkouts, ...tombstones]);
+}
+
+// === Soft-delete helpers (create tombstones) ===
+function softDeleteWorkoutById(id) {
+  const raw = _rawGetWorkouts();
+  const w = raw.find(x => x.id === id);
+  if (!w || w.deleted) return false;
+  const now = Date.now();
+  w.deleted = true;
+  w.deletedAt = now;
+  w.lastEditedAt = now;
+  return _rawSaveWorkouts(raw);
+}
+function softDeleteWorkoutsByDate(dateStr) {
+  const raw = _rawGetWorkouts();
+  const now = Date.now();
+  let count = 0;
+  raw.forEach(w => {
+    if (!w.deleted && w.date === dateStr) {
+      w.deleted = true;
+      w.deletedAt = now;
+      w.lastEditedAt = now;
+      count++;
+    }
+  });
+  if (!count) return false;
+  return _rawSaveWorkouts(raw) ? count : false;
+}
+function restoreWorkoutById(id) {
+  const raw = _rawGetWorkouts();
+  const w = raw.find(x => x.id === id);
+  if (!w || !w.deleted) return false;
+  const now = Date.now();
+  delete w.deleted;
+  delete w.deletedAt;
+  w.lastEditedAt = now;
+  return _rawSaveWorkouts(raw);
+}
+function permanentlyDeleteWorkoutById(id) {
+  // Removes the tombstone entirely. Cloud merge by id will see it gone from
+  // local but present in cloud (with lower lastEditedAt typically) and the
+  // local absence is just "not in local" — to truly purge across devices,
+  // both have to gc the tombstone. With 30-day GC this happens naturally.
+  const raw = _rawGetWorkouts();
+  const before = raw.length;
+  const after = raw.filter(w => w.id !== id);
+  if (after.length === before) return false;
+  return _rawSaveWorkouts(after);
+}
+
+// Per-workout merge for cloud sync. Takes two raw arrays (active + tombstones)
+// and returns the merged raw array. Per id, take whichever side has the higher
+// lastEditedAt. Tombstones use deletedAt-equivalent (their lastEditedAt is
+// stamped at deletion). New workouts on either side get included.
+function mergeWorkouts(localRaw, remoteRaw) {
+  const byId = new Map();
+  const ts = (w) => w.lastEditedAt || 0;
+  const accept = (w) => {
+    if (!w) return;
+    if (!w.id) {
+      // Defensive: a workout without an id from a non-migrated source.
+      // Skip rather than dedupe-by-content (avoids accidental collisions);
+      // local migration will assign an id next save.
+      return;
+    }
+    const existing = byId.get(w.id);
+    if (!existing || ts(w) > ts(existing)) byId.set(w.id, w);
+  };
+  (localRaw || []).forEach(accept);
+  (remoteRaw || []).forEach(accept);
+  return Array.from(byId.values());
+}
+
+function gcTombstones() {
+  const raw = _rawGetWorkouts();
+  const cutoff = Date.now() - TOMBSTONE_RETENTION_MS;
+  const kept = raw.filter(w => !w.deleted || (w.deletedAt || 0) >= cutoff);
+  if (kept.length !== raw.length) {
+    _rawSaveWorkouts(kept);
+    console.log('[Tombstone GC] Pruned', raw.length - kept.length, 'tombstones older than 30 days');
+  }
+}
+
 // ===================== DATA MIGRATION =====================
 const MIGRATION_VERSION = 9;
 const currentMigVer = parseInt(localStorage.getItem('gym_migration_version') || '0');
 function setMigrationVersion(v) { localStorage.setItem('gym_migration_version', String(v)); }
+
+// V2 migration: add stable `id` and `lastEditedAt` to every existing workout.
+// Runs once per device. Idempotent (skips workouts that already have these).
+// IMPORTANT: must run BEFORE any push/merge logic uses the workouts, but
+// AFTER initial pull where possible (so cloud-assigned ids win on devices
+// that migrate later). The init flow calls this from _doInitialPull.
+function _runWorkoutsMigrationV2() {
+  if (localStorage.getItem('gym_migration_v2')) return false;
+  try {
+    const raw = _rawGetWorkouts();
+    const counts = {};
+    let changed = false;
+    raw.forEach(w => {
+      if (!w.id) {
+        const date = w.date || 'unknown';
+        const idx = counts[date] || 0;
+        counts[date] = idx + 1;
+        w.id = 'wk_' + date + '_' + idx;
+        changed = true;
+      } else {
+        // Pre-count existing ids so we don't collide.
+        const m = /^wk_([^_]+)_(\d+)$/.exec(w.id);
+        if (m) {
+          const date = m[1]; const idx = parseInt(m[2]);
+          if (!counts[date] || idx >= counts[date]) counts[date] = idx + 1;
+        }
+      }
+      if (!w.lastEditedAt) {
+        // Backfill: use workout date at noon as a reasonable historical timestamp.
+        const dateStr = (w.date || '2020-01-01') + 'T12:00:00';
+        const t = Date.parse(dateStr);
+        w.lastEditedAt = isNaN(t) ? Date.now() : t;
+        changed = true;
+      }
+    });
+    if (changed) _rawSaveWorkouts(raw);
+    localStorage.setItem('gym_migration_v2', '1');
+    console.log('[Migration v2] Tagged', raw.length, 'workouts with id+lastEditedAt');
+    return true;
+  } catch(e) {
+    console.error('[Migration v2] Failed:', e);
+    return false;
+  }
+}
 
 // Fix existing BW exercise data: set extraWeight flag for exercises with kg > 0
 (function migrateBWExercises() {
@@ -2476,20 +2636,24 @@ document.addEventListener('DOMContentLoaded', () => {
   // Wait for Firebase Auth state to restore before pulling (rules require auth)
   function _doInitialPull() {
     if (typeof gymPullFromCloud !== 'function') { _initialPullDone = true; return; }
-    // ALWAYS pull on every load. Previously this was skipped within a session
-    // (sessionStorage flag) as a perf optimization, but that caused data loss:
-    // a refreshed stale tab would never learn about a phone-side update and
-    // would happily overwrite cloud on the next user action.
-    // Also: ALWAYS attach the live listener up-front, independent of pull
-    // success. Pull may fail (auth/network) but we still want to receive
-    // remote-change notifications when they arrive.
     if (typeof gymStartCloudListener === 'function') gymStartCloudListener();
     gymPullFromCloud().then(updated => {
+      // Run v2 migration AFTER pull, so cloud-assigned ids and timestamps
+      // (from another device that migrated earlier) win on this device.
+      // If pull failed or cloud is empty, migration still runs to tag
+      // local-only workouts before the next push.
+      try { if (typeof _runWorkoutsMigrationV2 === 'function') _runWorkoutsMigrationV2(); } catch(e) { console.error('[Migration v2] threw:', e); }
+      try { if (typeof gcTombstones === 'function') gcTombstones(); } catch(e) {}
       if (updated) {
         _gymRerenderActiveView();
         showToast && showToast('Data synced from cloud (' + window.gymCurrentUser + ')');
       }
-    }).catch(e => { console.error('[Sync] initial pull failed:',e); _initialPullDone = true; });
+    }).catch(e => {
+      console.error('[Sync] initial pull failed:',e);
+      _initialPullDone = true;
+      try { if (typeof _runWorkoutsMigrationV2 === 'function') _runWorkoutsMigrationV2(); } catch(e) {}
+      try { if (typeof gcTombstones === 'function') gcTombstones(); } catch(e) {}
+    });
   }
   if (typeof firebase !== 'undefined' && firebase.auth) {
     if (firebase.auth().currentUser) {
@@ -3410,10 +3574,24 @@ function mergeDayWorkouts(dateStr) {
     }
   });
   merged.exercises = consolidated;
-  for (let i = dayIndices.length - 1; i >= 1; i--) {
-    workouts.splice(dayIndices[i], 1);
+  // Tombstone the merged-away duplicates IN PLACE on the raw array so the
+  // consolidation propagates to other devices via cloud merge (otherwise
+  // pull/snapshot would re-add them). Single save covers both ops.
+  const now = Date.now();
+  merged.lastEditedAt = now;
+  const raw = _rawGetWorkouts();
+  const mergedRawIdx = raw.findIndex(w => w.id === merged.id);
+  if (mergedRawIdx >= 0) raw[mergedRawIdx] = merged;
+  for (let i = 1; i < dayIndices.length; i++) {
+    const dup = workouts[dayIndices[i]];
+    if (!dup || !dup.id) continue;
+    const rIdx = raw.findIndex(w => w.id === dup.id);
+    if (rIdx < 0) continue;
+    raw[rIdx].deleted = true;
+    raw[rIdx].deletedAt = now;
+    raw[rIdx].lastEditedAt = now;
   }
-  saveWorkouts(workouts);
+  _rawSaveWorkouts(raw);
 }
 
 let calEditModeActive = false;
@@ -4057,6 +4235,73 @@ function showWeightTypeChangeDialog(opts) {
   document.getElementById('wtc-cancel').onclick = () => closeModal();
 }
 
+// ===================== RECENTLY DELETED (TOMBSTONES) UI =====================
+function openRecentlyDeletedModal() {
+  const overlay = document.getElementById('modal-overlay');
+  const content = document.getElementById('modal-content');
+  if (!overlay || !content) return;
+  const deleted = getDeletedWorkouts()
+    .slice()
+    .sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
+
+  let html = '<button class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>';
+  html += '<h3 style="margin-top:0;">Recently Deleted Workouts</h3>';
+  html += '<div style="font-size:.82rem;color:var(--text2);margin-bottom:14px;">Workouts deleted in the last 30 days. Restored workouts re-appear on every device the next time it syncs.</div>';
+
+  if (!deleted.length) {
+    html += '<div style="padding:24px;text-align:center;color:var(--text2);font-size:.9rem;">No recently deleted workouts.</div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;">';
+    deleted.forEach(w => {
+      const partsLabel = (w.bodyParts || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' + ') + (w.hasCore ? ' + Core' : '');
+      const exCount = (w.exercises || []).length;
+      const setCount = (w.exercises || []).reduce((n, ex) => n + Object.keys(ex.sets || {}).length, 0);
+      const delDate = w.deletedAt ? new Date(w.deletedAt) : null;
+      const daysAgo = delDate ? Math.floor((Date.now() - w.deletedAt) / (24*60*60*1000)) : null;
+      const purgeIn = delDate ? 30 - daysAgo : null;
+      html += '<div style="padding:12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">';
+      html += '<div style="flex:1;min-width:200px;">';
+      html += '<div style="font-weight:700;color:var(--highlight2);">' + (w.date || '(no date)') + ' &mdash; ' + (partsLabel || 'Workout') + '</div>';
+      html += '<div style="font-size:.78rem;color:var(--text2);margin-top:3px;">' + exCount + ' exercise' + (exCount === 1 ? '' : 's') + ', ' + setCount + ' set' + (setCount === 1 ? '' : 's');
+      if (delDate) html += ' &middot; deleted ' + (daysAgo === 0 ? 'today' : daysAgo + ' day' + (daysAgo === 1 ? '' : 's') + ' ago') + ' &middot; auto-purges in ' + Math.max(0, purgeIn) + ' day' + (purgeIn === 1 ? '' : 's');
+      html += '</div></div>';
+      html += '<div style="display:flex;gap:6px;">';
+      html += '<button class="btn btn-success btn-sm" onclick="restoreDeletedWorkout(\'' + w.id + '\')" style="font-size:.78rem;">Restore</button>';
+      html += '<button class="btn btn-danger btn-sm" onclick="forgetDeletedWorkout(\'' + w.id + '\')" style="font-size:.78rem;" title="Delete permanently from this device">Forget</button>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+  }
+
+  content.innerHTML = html;
+  overlay.classList.add('active');
+}
+
+function restoreDeletedWorkout(id) {
+  if (!restoreWorkoftById_safeWrapper(id)) return;
+  showToast && showToast('Workout restored', 'success');
+  closeModal();
+  renderCalendar();
+  refreshAnalyticsAndInsights();
+  if (typeof gymPushNow === 'function') gymPushNow({force:true});
+  // Re-open the modal so user can restore more if needed
+  setTimeout(openRecentlyDeletedModal, 50);
+}
+// Wrapper to allow either spelling in case of future rename safety
+function restoreWorkoftById_safeWrapper(id) {
+  return (typeof restoreWorkoutById === 'function') ? restoreWorkoutById(id) : false;
+}
+
+function forgetDeletedWorkout(id) {
+  if (!confirm('Permanently delete this workout from this device? It will not be recoverable.')) return;
+  if (typeof permanentlyDeleteWorkoutById !== 'function') return;
+  if (!permanentlyDeleteWorkoutById(id)) return;
+  showToast && showToast('Workout permanently deleted', 'success');
+  // Push so the absence propagates (other devices' tombstones will also GC eventually)
+  if (typeof gymPushNow === 'function') gymPushNow({force:true});
+  setTimeout(openRecentlyDeletedModal, 50);
+}
+
 function setCalPulleyInPanel(globalIdx, exIdx, type) {
   const workouts = getWorkouts();
   const workout = workouts[globalIdx];
@@ -4082,13 +4327,14 @@ function deleteCalExercise(globalIdx, exIdx, dateStr) {
   if (!confirm('Remove "' + exName + '" from this workout?')) return;
   workout.exercises.splice(exIdx, 1);
   if (workout.exercises.length === 0 && !workout.peloton) {
-    // If no exercises and no peloton left, delete the whole workout
-    workouts.splice(globalIdx, 1);
+    // If no exercises and no peloton left, tombstone the whole workout so
+    // the deletion propagates correctly to other devices via cloud merge.
+    softDeleteWorkoutById(workout.id);
     showToast(exName + ' removed — empty workout deleted');
   } else {
+    saveWorkouts(workouts);
     showToast(exName + ' removed');
   }
-  saveWorkouts(workouts);
   renderCalendar();
   showCalDay(dateStr);
   refreshAnalyticsAndInsights();
@@ -4956,9 +5202,8 @@ function saveCalLogWorkout() {
 
 function deleteWorkout(dateStr) {
   if (!confirm('Delete ALL workouts for ' + dateStr + '?')) return;
-  let workouts = getWorkouts();
-  workouts = workouts.filter(w => w.date !== dateStr);
-  if (!saveWorkouts(workouts)) return;
+  const n = softDeleteWorkoutsByDate(dateStr);
+  if (!n) return;
   renderCalendar();
   // Push the deletion to the cloud immediately and confirm — never trust
   // the debounced push for destructive actions, since users frequently close
@@ -4980,11 +5225,11 @@ function deleteWorkout(dateStr) {
 
 function deleteWorkoutByIndex(globalIdx) {
   const workouts = getWorkouts();
-  if (!workouts[globalIdx]) return;
-  const dateStr = workouts[globalIdx].date;
+  const target = workouts[globalIdx];
+  if (!target) return;
+  const dateStr = target.date;
   if (!confirm('Delete this workout?')) return;
-  workouts.splice(globalIdx, 1);
-  if (!saveWorkouts(workouts)) return;
+  if (!softDeleteWorkoutById(target.id)) return;
   renderCalendar();
   showCalDay(dateStr);
   refreshAnalyticsAndInsights();
