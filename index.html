@@ -93,7 +93,7 @@ select{min-width:140px;cursor:pointer;}
 .set-label{font-size:.85rem;font-weight:500;color:var(--text2);min-width:90px;}
 .set-label.warmup{color:var(--blue);}
 .set-label.finisher{color:var(--orange);}
-.set-check{width:20px;height:20px;accent-color:var(--highlight);}
+input[type=checkbox].set-check{width:20px;height:20px;accent-color:var(--highlight);}
 
 /* Peloton Card */
 .peloton-card{background:linear-gradient(135deg,#1a1a2e,#0f3460);border:2px solid var(--blue);}
@@ -360,6 +360,8 @@ select{min-width:140px;cursor:pointer;}
 }
 html{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;}
 button,input,select,textarea{-webkit-appearance:none;-webkit-tap-highlight-color:transparent;}
+/* Restore native checkbox rendering (the reset above hides the tick). Toggle switches hide their input so are unaffected. */
+input[type=checkbox]{-webkit-appearance:checkbox;appearance:auto;width:18px;height:18px;min-width:18px;margin:0;flex-shrink:0;cursor:pointer;}
 .chip,.nav-tab,.btn{touch-action:manipulation;}
 input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus */
 
@@ -2374,7 +2376,7 @@ function gcTombstones() {
 }
 
 // ===================== DATA MIGRATION =====================
-const MIGRATION_VERSION = 9;
+const MIGRATION_VERSION = 10;
 const currentMigVer = parseInt(localStorage.getItem('gym_migration_version') || '0');
 function setMigrationVersion(v) { localStorage.setItem('gym_migration_version', String(v)); }
 
@@ -2613,6 +2615,60 @@ function _runWorkoutsMigrationV2() {
   });
   if (changed) saveWorkouts(workouts);
   setMigrationVersion(Math.max(currentMigVer, 9));
+})();
+
+// Migration v10: consolidate the Smith Machine "Bench Press" spellings (only
+// ever present in logged history, never in the exercise list) into the
+// canonical "Barbell Press" entries. If a workout already has the barbell
+// version that day, the sets are merged in (renumbered after the existing ones).
+const SMITH_MACHINE_RENAMES = {
+  'smith machine flat bench press': 'Smith Machine Flat Barbell Press',
+  'smith machine incline bench press': 'Smith Machine Incline Barbell Press'
+};
+(function migrateSmithMachineNames() {
+  if (currentMigVer >= 10) return;
+  const workouts = getWorkouts();
+  let changed = false;
+  workouts.forEach(w => {
+    if (!w || !w.exercises) return;
+    const keep = [];
+    w.exercises.forEach(ex => {
+      const target = ex && ex.name ? SMITH_MACHINE_RENAMES[ex.name.toLowerCase().trim()] : null;
+      if (!target) { keep.push(ex); return; }
+      changed = true;
+      ex.name = target;
+      ex.bodyPart = 'chest';
+      ex.angle = target === 'Smith Machine Incline Barbell Press' ? '30°' : '';
+      if (ex.weightType === 'per_arm') ex.weightType = 'total';
+      const existing = keep.find(e => e.name === target);
+      if (!existing) { keep.push(ex); return; }
+      // Merge sets into the existing barbell entry, continuing its numbering
+      const maxNum = Object.keys(existing.sets || {}).reduce((m, k) => { const n = parseInt(k.replace(/\D/g, '')); return isNaN(n) ? Math.max(m, 1) : Math.max(m, n); }, 0);
+      let nextNum = maxNum + 1;
+      existing.sets = existing.sets || {};
+      sortSetKeys(Object.keys(ex.sets || {})).forEach(sk => {
+        existing.sets[sk.replace(/\d+$/, '') + nextNum] = ex.sets[sk];
+        nextNum++;
+      });
+    });
+    // Also catch a barbell entry that appeared *after* a renamed one in the list
+    const consolidated = [];
+    keep.forEach(ex => {
+      const dup = ex && Object.values(SMITH_MACHINE_RENAMES).includes(ex.name) ? consolidated.find(e => e.name === ex.name) : null;
+      if (!dup) { consolidated.push(ex); return; }
+      changed = true;
+      const maxNum = Object.keys(dup.sets || {}).reduce((m, k) => { const n = parseInt(k.replace(/\D/g, '')); return isNaN(n) ? Math.max(m, 1) : Math.max(m, n); }, 0);
+      let nextNum = maxNum + 1;
+      dup.sets = dup.sets || {};
+      sortSetKeys(Object.keys(ex.sets || {})).forEach(sk => {
+        dup.sets[sk.replace(/\d+$/, '') + nextNum] = ex.sets[sk];
+        nextNum++;
+      });
+    });
+    w.exercises = consolidated;
+  });
+  if (changed) saveWorkouts(workouts);
+  setMigrationVersion(Math.max(currentMigVer, 10));
 })();
 
 // ===================== INIT =====================
@@ -4744,9 +4800,9 @@ function copySelectedExercises(workoutGlobalIdx) {
       const setChecks = document.querySelectorAll('.copy-set-check-' + workoutGlobalIdx + '-' + idx + ':checked');
       const selectedSetKeys = new Set();
       setChecks.forEach(scb => selectedSetKeys.add(scb.dataset.setkey));
-      // Only keep selected sets
+      // Only keep selected sets, in canonical order (warm-ups, sets, finishers)
       const filteredSets = {};
-      Object.keys(ex.sets).forEach(sk => {
+      sortSetKeys(Object.keys(ex.sets)).forEach(sk => {
         if (selectedSetKeys.has(sk)) filteredSets[sk] = ex.sets[sk];
       });
       ex.sets = filteredSets;
@@ -4863,7 +4919,7 @@ function pasteExercisesToDate(targetDate) {
     const id = 'ex-' + (++entryCounter);
     const setTypes = [];
     const sets = {};
-    const exSetKeys = Object.keys(ex.sets);
+    const exSetKeys = sortSetKeys(Object.keys(ex.sets));
     if (exSetKeys.length > 0) {
       exSetKeys.forEach(k => {
         setTypes.push({ key: k, label: formatSetLabel(k), cls: k.startsWith('warmup') ? 'warmup' : k.startsWith('finisher') ? 'finisher' : '' });
@@ -4875,7 +4931,10 @@ function pasteExercisesToDate(targetDate) {
     }
     const weightType = ex.weightType || WEIGHT_TYPE_DEFAULTS[ex.name] || 'total';
     const extraWeight = !!ex.extraWeight;
-    exerciseEntries.push({ id, bodyPart: ex.bodyPart, exerciseName: ex.name, angle: ex.angle || '', sets, weightType, setTypes, extraWeight });
+    const entry = { id, bodyPart: ex.bodyPart, exerciseName: ex.name, angle: ex.angle || '', sets, weightType, setTypes, extraWeight };
+    // Carry the pulley choice across for cable exercises (was previously dropped → always Single)
+    if (isCableExercise(ex.name)) entry.pulleyType = ex.pulleyType || 'single';
+    exerciseEntries.push(entry);
   });
 
   // Highlight selected body part chips
@@ -6765,6 +6824,9 @@ const EXERCISE_NAME_MAP = {
   'incline barbell press': 'Incline Dumbbell Press',
   'smith machine flat barbell press': 'Smith Machine Flat Barbell Press',
   'smith machine incline barbell press': 'Smith Machine Incline Barbell Press',
+  'smith machine flat bench press': 'Smith Machine Flat Barbell Press',
+  'smith machine bench press': 'Smith Machine Flat Barbell Press',
+  'smith machine incline bench press': 'Smith Machine Incline Barbell Press',
   'seated lateral raise': 'Dumbbell Lateral Raise',
   'seated dumbbell lateral raise': 'Dumbbell Lateral Raise',
   'seated dumbbell lateral rise': 'Dumbbell Lateral Raise',
