@@ -1113,6 +1113,11 @@ html.theme-light .card{box-shadow:0 2px 8px rgba(0,0,0,.05);}
     <div class="card">
       <h3>Sync diagnostics <button class="btn btn-secondary btn-sm" style="margin-left:8px;" onclick="renderSyncDiag()">Refresh</button> <button class="btn btn-secondary btn-sm" onclick="gymForceSync()">Push now</button></h3>
       <pre id="sync-diag" style="white-space:pre-wrap;font-size:.72rem;background:var(--card2);padding:10px;border-radius:6px;"></pre>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="uploadSyncDiag()">Upload this device's report</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadSyncDiagReports()">Load reports from other devices</button>
+      </div>
+      <pre id="sync-diag-reports" style="white-space:pre-wrap;font-size:.72rem;background:var(--card2);padding:10px;border-radius:6px;margin-top:8px;"></pre>
     </div>
     <div class="card">
       <h3>User Approval Management</h3>
@@ -1475,7 +1480,7 @@ if (_activeUser === 'FO') {
 
 // ===================== COLOUR THEMES =====================
 // Stored in gym_theme (synced with the rest of the user's data). Applied by setting the CSS variables on <html>.
-var GYM_BUILD = '2026-10-29 r11';   // bump on every push; shown next to the sync status for FO so both devices can be compared
+var GYM_BUILD = '2026-10-29 r12';   // bump on every push; shown next to the sync status for FO so both devices can be compared
 var GYM_THEMES = [
   { id: 'midnight',  name: 'Midnight (default)', light: false, vars: { bg: '#0f0f1a', card: '#1a1a2e', card2: '#16213e', accent: '#0f3460', accent2: '#143d73', highlight: '#e94560', highlight2: '#ff6b6b', text: '#eaeaea', text2: '#a0a0b8', border: '#2a2a4a', 'input-bg': '#12122a' } },
   { id: 'sunrise',   name: 'Sunrise',      light: true, vars: { bg: '#ffc4a0', card: '#fff1e6', card2: '#ffdcc6', accent: '#ffa366', accent2: '#ff8c42', highlight: '#d7266b', highlight2: '#ef5a93', text: '#3a2014', text2: '#7a4a33', border: '#f2ad85', 'input-bg': '#fff8f2' } },
@@ -1604,6 +1609,7 @@ function gymPushToCloud(opts) {
   if (!_syncEnabled || !_fbDocRef) { _diagPush(_syncDiag.pushes, { at: Date.now(), result: 'skipped: sync not enabled' }); return Promise.resolve(false); }
   if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
   const diag = { at: Date.now(), v2: _storageV2, result: 'running' };
+  _lastPushAttempt = Date.now();
   _diagPush(_syncDiag.pushes, diag);
   const done = p => p.then(r => { diag.result = (r ? 'ok' : 'nothing sent / refused') + ' (' + _syncStatus + ')'; diag.pushed = _lastPushedModified; return r; }, e => { diag.result = 'error: ' + String(e && e.message || e); throw e; });
   if (_storageV2) return done(_gymPushV2(opts));
@@ -1979,7 +1985,7 @@ function _gymApplyRemoteData(remoteData, remoteModified) {
 }
 
 let _snapshotUnsub = null;
-var _syncDiag = { listener: false, snapshots: [], pushes: [], errors: [] };
+var _syncDiag = { listener: false, snapshots: [], pushes: [], errors: [], writes: [], watchdog: 0 };
 function _diagPush(list, item) { list.push(item); if (list.length > 8) list.shift(); }
 function gymStartCloudListener() {
   if (!_syncEnabled || !_fbDocRef || _snapshotUnsub) return;
@@ -2033,6 +2039,9 @@ const _origRawRemove = (function(){
 
 localStorage.setItem = function(k, v) {
   const result = _origAuthSet(k, v);
+  if (k && k.startsWith('gym_') && k !== 'gym_last_modified' && k !== 'gym_seed_imported_v1' && typeof _syncDiag !== 'undefined') {
+    _diagPush(_syncDiag.writes, { at: Date.now(), key: k, scheduled: !!_initialPullDone, enabled: _syncEnabled });
+  }
   if (k && k.startsWith('gym_') && k !== 'gym_last_modified' && k !== 'gym_seed_imported_v1' && _initialPullDone) {
     _origAuthSet('gym_last_modified', String(Date.now()));
     // Mark indicator as pending so the user sees there are unsynced changes
@@ -2065,6 +2074,20 @@ function gymFlushPendingPush() {
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'hidden') gymFlushPendingPush();
 });
+// Watchdog: if a local change is sitting unsent (no debounce timer alive), push it. Backs off 15 s after any attempt.
+let _lastPushAttempt = 0;
+setInterval(function() {
+  try {
+    if (!_syncEnabled || !_initialPullDone || _syncTimer || _syncStatus === 'syncing' || _syncStatus === 'pulling') return;
+    if (Date.now() - _lastPushAttempt < 15000) return;
+    const localMod = parseInt(localStorage.getItem('gym_last_modified') || '0');
+    if (_syncStatus === 'pending' || localMod > _lastPushedModified) {
+      _lastPushAttempt = Date.now(); _syncDiag.watchdog++;
+      console.log('[Sync] watchdog: unsent change detected, pushing');
+      gymPushToCloud();
+    }
+  } catch (e) {}
+}, 4000);
 window.addEventListener('pagehide', gymFlushPendingPush);
 window.addEventListener('beforeunload', gymFlushPendingPush);
 window.gymForcePull = function() {
@@ -13043,9 +13066,14 @@ function renderSyncDiag() {
   const t = ms => ms ? new Date(ms).toLocaleTimeString('en-AU', { timeZone: 'Australia/Melbourne', hour12: false }) + '.' + String(ms % 1000).padStart(3, '0') : '-';
   const L = [];
   L.push('build ' + (typeof GYM_BUILD !== 'undefined' ? GYM_BUILD : '?') + ' | user ' + window.gymCurrentUser + ' | now ' + t(Date.now()));
-  L.push('syncEnabled ' + _syncEnabled + ' | storageV2 ' + _storageV2 + ' | status ' + _syncStatus + ' | listener ' + (_syncDiag.listener ? 'attached' : 'NOT attached') + ' | months listener ' + (_monthsUnsub ? 'attached' : 'no'));
+  L.push('syncEnabled ' + _syncEnabled + ' | initialPullDone ' + _initialPullDone + ' | storageV2 ' + _storageV2 + ' | status ' + _syncStatus + ' | timer ' + (_syncTimer ? 'pending' : 'none') + ' | watchdog pushes ' + _syncDiag.watchdog);
+  L.push('listener ' + (_syncDiag.listener ? 'attached' : 'NOT attached') + ' | months listener ' + (_monthsUnsub ? 'attached' : 'no') + ' | ' + (navigator.userAgent || '').slice(0, 80));
   L.push('lastPushedModified ' + t(_lastPushedModified) + ' | local gym_last_modified ' + t(parseInt(localStorage.getItem('gym_last_modified') || '0')) + ' | mainHash ' + String(_mainHash).slice(0, 10));
   L.push('local gym_theme ' + (localStorage.getItem('gym_theme') || '(none)') + ' | firebase user ' + ((typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser.email : 'none'));
+  L.push('');
+  L.push('LOCAL WRITES of gym_ keys (newest last):');
+  _syncDiag.writes.forEach(wr => L.push('  ' + t(wr.at) + ' ' + wr.key + (wr.scheduled ? ' -> push scheduled' : ' -> NOT scheduled (initial pull not done)')));
+  if (!_syncDiag.writes.length) L.push('  none since page load');
   L.push('');
   L.push('PUSHES (newest last):');
   _syncDiag.pushes.forEach(p => L.push('  ' + t(p.at) + ' v2=' + p.v2 + ' -> ' + p.result + (p.pushed ? ' pushed=' + t(p.pushed) : '')));
@@ -13058,6 +13086,24 @@ function renderSyncDiag() {
   L.push('ERRORS: ' + (_syncDiag.errors.length ? '' : 'none'));
   _syncDiag.errors.forEach(e => L.push('  ' + t(e.at) + ' ' + e.where + ': ' + e.msg));
   el.textContent = L.join('\n');
+  return L.join('\n');
+}
+function _diagDeviceId() { let id = localStorage.getItem('diag_device_id'); if (!id) { id = Math.random().toString(36).slice(2, 8); try { localStorage.setItem('diag_device_id', id); } catch (e) {} } return id; }
+async function uploadSyncDiag() {
+  try {
+    const text = renderSyncDiag();
+    await _fbDocRef.collection('feeds').doc('diag-' + _diagDeviceId()).set({ text, at: Date.now(), ua: navigator.userAgent, build: GYM_BUILD, kind: 'diag' });
+    showToast('Report uploaded', 'info');
+  } catch (e) { showToast('Upload failed: ' + (e && e.message || e), 'error'); }
+}
+async function loadSyncDiagReports() {
+  const el = document.getElementById('sync-diag-reports'); if (!el) return;
+  try {
+    const col = await _fbDocRef.collection('feeds').get();
+    const parts = [];
+    col.forEach(dc => { if (dc.id.startsWith('diag-')) { const d = dc.data() || {}; parts.push('=== report ' + dc.id + ' uploaded ' + new Date(d.at || 0).toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' }) + ' ===\n' + (d.text || '')); } });
+    el.textContent = parts.length ? parts.join('\n\n') : 'No reports from other devices yet.';
+  } catch (e) { el.textContent = 'Load failed: ' + (e && e.message || e); }
 }
 
 // ===================== AI COACH TAB =====================
