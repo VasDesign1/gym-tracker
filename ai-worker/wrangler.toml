@@ -1,0 +1,28 @@
+name = "gym-tracker-ai"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Monthly ledger + cap lives here. Create the namespace once with
+#   npx wrangler kv namespace create AI_LEDGER
+# and paste the printed id below.
+[[kv_namespaces]]
+binding = "AI_LEDGER"
+id = "REPLACE_WITH_KV_ID"
+
+[vars]
+# Browser origins allowed to call this Worker (comma separated).
+ALLOWED_ORIGINS = "https://vasdesign1.github.io,http://localhost:8080,http://127.0.0.1:8080"
+# Firebase Auth e-mails allowed to use the AI (comma separated). UI hiding is not security; this is.
+ALLOWED_EMAILS = "fo@gymtracker.local"
+# Firebase Web API key (public, same one index.html ships with). Used only to call accounts:lookup.
+FIREBASE_API_KEY = "AIzaSyCP8qvTGzBdols1FSr5Q9EwMXvsJRkzAEY"
+# Hard stop for this Worker per calendar month, in USD. Console spend limit is the outer guard.
+MONTHLY_CAP_USD = "45"
+MODEL = "claude-opus-5-5"
+
+# Secrets (never in this file):
+#   ANTHROPIC_API_KEY  -> set in the Cloudflare dashboard: Workers & Pages > gym-tracker-ai > Settings > Variables and Secrets
+
+[observability]
+enabled = true

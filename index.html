@@ -60,6 +60,32 @@ select{min-width:140px;cursor:pointer;}
 
 /* Body Part Chips */
 .chip-group{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;}
+.ai-chat{display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow:auto;margin-bottom:12px;}
+.ai-msg{padding:10px 14px;border-radius:12px;max-width:94%;font-size:.9rem;line-height:1.5;word-wrap:break-word;}
+.ai-msg.user{align-self:flex-end;background:var(--highlight);color:#fff;white-space:pre-wrap;}
+.ai-msg.ai{align-self:flex-start;background:var(--card2);border:1px solid var(--border);}
+.ai-msg.ai h4{margin:10px 0 4px;font-size:.92rem;color:var(--text);}
+.ai-msg.ai ul,.ai-msg.ai ol{margin:4px 0 6px 20px;padding:0;}
+.ai-msg.ai li{margin:2px 0;}
+.ai-msg.ai p{margin:6px 0;}
+.ai-msg.ai code{background:rgba(255,255,255,.08);padding:1px 4px;border-radius:4px;font-size:.85em;}
+.ai-msg.ai.streaming::after{content:"▍";animation:aiblink 1s steps(2) infinite;}
+@keyframes aiblink{to{opacity:0;}}
+.ai-meta{font-size:.68rem;color:var(--text2);margin-top:6px;}
+#ai-q,#ai-notes{width:100%;box-sizing:border-box;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font:inherit;font-size:.9rem;resize:vertical;}
+.ai-suggest{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.ai-suggest .chip{padding:6px 12px;font-size:.75rem;font-weight:500;}
+.ai-bar{height:8px;background:var(--card2);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin:6px 0 10px;}
+.ai-bar>div{height:100%;background:var(--green);transition:width .4s;}
+.ai-table{width:100%;border-collapse:collapse;font-size:.75rem;}
+.ai-table th,.ai-table td{padding:4px 6px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
+.ai-table td.num,.ai-table th.num{text-align:right;}
+#ai-packet{white-space:pre-wrap;font-size:.7rem;max-height:40vh;overflow:auto;background:var(--card2);padding:10px;border-radius:6px;margin-top:8px;}
+.ai-tiles{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
+.ai-tile{flex:1;min-width:120px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.ai-tile .v{font-size:1.3rem;font-weight:700;}
+.ai-tile .l{font-size:.7rem;color:var(--text2);}
+
 .chip{padding:10px 20px;border-radius:25px;cursor:pointer;font-size:.85rem;font-weight:600;
   background:var(--card2);border:2px solid var(--border);transition:all .2s;user-select:none;}
 .chip:hover{border-color:var(--highlight);transform:translateY(-1px);}
@@ -639,6 +665,7 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
     <div class="nav-tab" data-view="analytics">Analytics</div>
     <div class="nav-tab" data-view="insights">Insights</div>
     <div class="nav-tab" data-view="coach">Coach</div>
+    <div class="nav-tab" data-view="ai" id="nav-ai" style="display:none;">🤖 AI Coach</div>
     <div class="nav-tab" data-view="admin" id="nav-admin" style="display:none;color:#f1c40f;">⚙ Admin</div>
   </div>
   <span class="gym-user-badge" id="gym-user-badge"></span>
@@ -981,6 +1008,50 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
       <div class="chip" data-panel="trainingmap" onclick="switchCoachPanel('trainingmap')">Training Map</div>
     </div>
     <div id="coach-content"></div>
+  </div>
+
+  <!-- AI COACH VIEW (only visible when logged in as FO; the Worker enforces it too) -->
+  <div id="view-ai" class="view">
+    <h2>🤖 AI Coach</h2>
+    <div class="card" id="ai-setup-note" style="display:none;border-color:var(--orange);">
+      <h3>Not connected yet</h3>
+      <p style="font-size:.85rem;color:var(--text2);">The AI Worker URL is not set in this build (<code>AI_WORKER_URL</code>). Deploy the Worker in <code>ai-worker/</code> and paste its URL into index.html.</p>
+    </div>
+    <div class="card">
+      <h3>Ask the coach</h3>
+      <div id="ai-chat" class="ai-chat"></div>
+      <div class="ai-suggest" id="ai-suggest">
+        <div class="chip" onclick="aiSuggest(this)">How does my routine compare with strength standards for my age and weight?</div>
+        <div class="chip" onclick="aiSuggest(this)">Which exercises have stalled in the last 8 weeks and what should I change?</div>
+        <div class="chip" onclick="aiSuggest(this)">Is my protein and calorie intake right for my goal?</div>
+        <div class="chip" onclick="aiSuggest(this)">Am I balancing body parts and cardio well across the week?</div>
+        <div class="chip" onclick="aiSuggest(this)">Give me a short review of this week.</div>
+      </div>
+      <textarea id="ai-q" rows="3" placeholder="Ask about your training, nutrition, recovery, or how you compare for your age and weight…" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();aiSend();}"></textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+        <button class="btn btn-primary btn-sm" id="ai-send" onclick="aiSend()">Ask</button>
+        <button class="btn btn-secondary btn-sm" onclick="aiNewChat()">New chat</button>
+        <label style="font-size:.8rem;color:var(--text2);">Depth
+          <select id="ai-effort" style="min-width:90px;margin-left:4px;"><option value="low">Quick</option><option value="medium" selected>Normal</option><option value="high">Deep</option></select>
+        </label>
+        <span id="ai-status" style="font-size:.8rem;color:var(--text2);"></span>
+      </div>
+      <p style="font-size:.72rem;color:var(--text2);margin:10px 0 0;">General training and nutrition guidance built from your own log. Not medical advice. Ctrl+Enter sends.</p>
+    </div>
+    <div class="card">
+      <h3>What the coach knows about you</h3>
+      <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Notes for the coach: goals, injuries, supplements, schedule, anything the log does not show</label>
+      <textarea id="ai-notes" rows="3" placeholder="e.g. Goal: add 5 kg lean mass by March. Left shoulder niggles on overhead press. 5 g creatine daily." onchange="aiSaveNotes()"></textarea>
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer;font-size:.85rem;color:var(--text2);">Data packet sent with each question (profile + last 8 weeks)</summary>
+        <div style="margin-top:8px;"><button class="btn btn-secondary btn-sm" onclick="aiShowPacket(true)">Rebuild packet</button></div>
+        <pre id="ai-packet"></pre>
+      </details>
+    </div>
+    <div class="card" id="ai-usage-card">
+      <h3>AI usage this month <button class="btn btn-secondary btn-sm" style="margin-left:8px;" onclick="aiRefreshUsage()">Refresh</button></h3>
+      <div id="ai-usage"><span style="font-size:.85rem;color:var(--text2);">Loading…</span></div>
+    </div>
   </div>
 
   <!-- ADMIN VIEW (only visible when logged in as FO) -->
@@ -3031,6 +3102,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (window.gymCurrentUser && window.gymCurrentUser.toUpperCase() === 'FO') {
     const adminTab = document.getElementById('nav-admin');
     if (adminTab) adminTab.style.display = '';
+    const aiTab = document.getElementById('nav-ai');
+    if (aiTab) aiTab.style.display = '';
   }
   // Wait for Firebase Auth state to restore before pulling (rules require auth)
   function _doInitialPull() {
@@ -3086,6 +3159,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (tab.dataset.view === 'analytics') refreshAnalytics();
       if (tab.dataset.view === 'insights') populateInsightExercises();
       if (tab.dataset.view === 'coach') initCoachTab();
+      if (tab.dataset.view === 'ai') initAiTab();
       if (tab.dataset.view === 'admin') adminRefresh();
     });
   });
@@ -7976,6 +8050,89 @@ window.nutKcal = nutKcal;
 window.renderNutritionAnalytics = function() { return renderNutritionAnalytics(); };
 window.importNutritionCsvFile = function(f) { return importNutritionCsvFile(f); };
 window.renderRecovery = function() { return renderRecovery(); };
+// ---- AI Coach: compact text packet of profile + last N weeks, sent with every question ----
+window.buildAiContextPacket = function(weeks) {
+  weeks = weeks || 8;
+  const c = buildCache();
+  const profile = getProfile() || {};
+  const today = todayStr();
+  const cutD = new Date(today + 'T12:00:00'); cutD.setDate(cutD.getDate() - weeks * 7);
+  const cutStr = formatDate(cutD);
+  const L = [];
+  L.push('Today: ' + today + ' (Melbourne). Window: last ' + weeks + ' weeks, since ' + cutStr + '.');
+  const bwLog = getBodyweightLog(); const bwDates = Object.keys(bwLog).sort();
+  const latestBw = bwDates.length ? bwLog[bwDates[bwDates.length - 1]] : profile.weight;
+  const pf = [];
+  if (profile.age) pf.push('age ' + profile.age);
+  pf.push('sex ' + (profile.gender === 'F' ? 'female' : 'male'));
+  if (latestBw) pf.push('bodyweight ' + latestBw + ' kg');
+  if (profile.height) pf.push('height ' + profile.height + ' cm');
+  L.push('PROFILE: ' + (pf.length ? pf.join(', ') : 'not set'));
+  const notes = (localStorage.getItem('gym_ai_notes') || '').trim();
+  if (notes) L.push('USER NOTES (goals, injuries, supplements): ' + notes.replace(/\s+/g, ' '));
+
+  const ws = c.workouts.filter(w => w.date >= cutStr);
+  L.push('');
+  L.push('TRAINING: ' + ws.length + ' sessions in window; ' + c.workouts.length + ' logged all-time since ' + (c.allDates[0] || '?') + '.');
+  L.push('Weekly working sets by body part (week starting Monday; direct sets only):');
+  const wkCut = mondayWeekKey(cutD);
+  Object.keys(c.weeklyVolume).filter(k => k >= wkCut).sort().forEach(wk => {
+    const parts = Object.entries(c.weeklyVolume[wk]).filter(([k, n]) => k.indexOf('_') < 0 && n > 0).map(([k, n]) => k + ' ' + Math.round(n)).join(', ');
+    const wkWs = ws.filter(w => mondayWeekKey(new Date(w.date + 'T12:00:00')) === wk);
+    const cm = cardioMinutes(wkWs);
+    const cardio = [cm.peloton ? 'Peloton ' + cm.peloton + 'min' : '', cm.walk ? 'incline walk ' + cm.walk + 'min' : '', cm.swim ? 'swim ' + cm.swim + 'min' : ''].filter(Boolean).join(', ');
+    L.push('  ' + wk + ': ' + (parts || 'no lifting') + (cardio ? ' | cardio: ' + cardio : ''));
+  });
+
+  L.push('');
+  L.push('RECENT SESSIONS (newest first, best working set per exercise):');
+  ws.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12).forEach(w => {
+    const exs = (w.exercises || []).map(e => {
+      const sets = getWorkingSetsFromExercise(e);
+      const top = sets.length ? sets.reduce((a, b) => (b.kg > a.kg ? b : a)) : null;
+      return resolveExerciseName(e.name) + (top ? ' ' + top.kg + 'x' + top.reps + ' (' + sets.length + ' sets)' : ' (no sets)');
+    });
+    const cardio = [];
+    if (w.peloton && (w.peloton.watts || w.peloton.minutes)) cardio.push('Peloton ' + (w.peloton.minutes || 30) + 'min ' + (w.peloton.watts || 0) + 'W' + (w.peloton.recovery ? ' recovery' : ''));
+    (w.cardio || []).forEach(cd => { const t = cardioLine(cd); if (t) cardio.push(t.replace(' — ', ' ')); });
+    L.push('  ' + w.date + (w.deload ? ' [deload]' : '') + ' ' + ((w.bodyParts || []).join('+') + (w.hasCore ? '+core' : '') || 'cardio only') + ': ' + exs.concat(cardio).join('; '));
+  });
+
+  L.push('');
+  L.push('EXERCISE PROGRESSION in window (max kg x max reps per session, oldest > newest; dl = deload; all-time PR in brackets, e1RM = Epley). For "Assisted" exercises the kg is the assistance weight, so less kg = stronger:');
+  const prs = getAllPRs();
+  Object.keys(c.exerciseHistory).sort().forEach(name => {
+    const recent = c.exerciseHistory[name].filter(h => h.date >= cutStr && h.sets.length);
+    if (!recent.length) return;
+    const pr = prs[name];
+    const seq = recent.slice(-6).map(h => h.date.slice(5) + ' ' + h.maxKg + 'x' + h.maxReps + (h.deload ? ' dl' : '')).join(' > ');
+    L.push('  ' + name + ' [' + recent[0].bodyPart + ']: ' + seq + (pr ? ' [PR ' + pr.bestWeight + ' kg, e1RM ' + pr.bestE1RM + ' kg on ' + pr.bestE1RMDate + ']' : ''));
+  });
+
+  const pel = c.pelotonHistory.filter(p => p.date >= cutStr);
+  if (pel.length) L.push('PELOTON: ' + pel.length + ' rides in window, avg ' + Math.round(avg(pel.map(p => p.watts))) + ' W, ' + Math.round(avg(pel.map(p => p.minutes))) + ' min, ' + pel.filter(p => p.recovery).length + ' recovery rides.');
+
+  L.push('');
+  const nut = getNutritionLog();
+  const nutCutD = new Date(today + 'T12:00:00'); nutCutD.setDate(nutCutD.getDate() - 28);
+  const nutCut = formatDate(nutCutD);
+  const trainDates = new Set(ws.map(w => w.date));
+  const days = Object.keys(nut).filter(d => d >= nutCut && d <= today).sort();
+  const kcalOf = d => nutKcal(nut[d]);
+  const withKcal = days.filter(d => kcalOf(d) > 0);
+  if (withKcal.length) {
+    const m = (arr, f) => Math.round(avg(arr.map(f)));
+    const tr = withKcal.filter(d => trainDates.has(d)), rs = withKcal.filter(d => !trainDates.has(d));
+    L.push('NUTRITION last 28 days (' + withKcal.length + ' days logged): avg ' + m(withKcal, kcalOf) + ' kcal, protein ' + m(withKcal, d => nut[d].protein || 0) + ' g, carbs ' + m(withKcal, d => nut[d].carbs || 0) + ' g, fat ' + m(withKcal, d => nut[d].fat || 0) + ' g'
+      + (latestBw ? ', protein ' + (m(withKcal, d => nut[d].protein || 0) / latestBw).toFixed(2) + ' g/kg' : '')
+      + (tr.length && rs.length ? '; training days ' + m(tr, kcalOf) + ' kcal vs rest days ' + m(rs, kcalOf) + ' kcal' : '') + '.');
+    L.push('  Last 7 logged days: ' + withKcal.slice(-7).map(d => d.slice(5) + ' ' + kcalOf(d) + 'kcal/P' + (nut[d].protein || 0)).join(', '));
+  } else L.push('NUTRITION: nothing logged in the last 28 days.');
+  const bwWin = bwDates.filter(d => d >= cutStr);
+  if (bwWin.length) L.push('BODYWEIGHT: ' + bwLog[bwWin[0]] + ' kg on ' + bwWin[0] + ' -> ' + bwLog[bwWin[bwWin.length - 1]] + ' kg on ' + bwWin[bwWin.length - 1] + ' (' + bwWin.length + ' weigh-ins' + (bwDates.length > bwWin.length ? ', earliest record ' + bwLog[bwDates[0]] + ' kg on ' + bwDates[0] : '') + ').');
+  else if (latestBw) L.push('BODYWEIGHT: ' + latestBw + ' kg (profile value, no weigh-ins in window).');
+  return L.join('\n');
+};
 function getNutritionLog() { try { const v=JSON.parse(localStorage.getItem('gym_nutrition_log')||'{}'); return (v&&typeof v==='object')?v:{}; } catch(e) { return {}; } }
 function getBodyweightLog() { try { const v=JSON.parse(localStorage.getItem('gym_bodyweight_log')||'{}'); return (v&&typeof v==='object')?v:{}; } catch(e) { return {}; } }
 function todayStr() { return melbourneDateStr(new Date()); }
@@ -12692,6 +12849,178 @@ window.adminDelete = async function(userId) {
     adminRefresh();
   } catch(e) { alert('Error: ' + e.message); }
 };
+
+// ===================== AI COACH TAB =====================
+// Talks to the Cloudflare Worker in ai-worker/ which holds the Anthropic key. The Worker
+// verifies the Firebase ID token and only serves the e-mails on its allow-list.
+let AI_WORKER_URL = '';     // e.g. 'https://gym-tracker-ai.<account>.workers.dev' (no trailing slash)
+let _aiHistory = [];        // [{role:'user'|'assistant', content, meta?}]
+let _aiPacket = null;       // data packet for this sitting (rebuilt on New chat)
+let _aiBusy = false;
+let _aiInited = false;
+
+function _aiLoadChat() { try { const v = JSON.parse(localStorage.getItem('ui_ai_chat') || '[]'); _aiHistory = Array.isArray(v) ? v : []; } catch (e) { _aiHistory = []; } }
+function _aiSaveChat() { try { localStorage.setItem('ui_ai_chat', JSON.stringify(_aiHistory.slice(-40))); } catch (e) {} }
+
+function initAiTab() {
+  if (!_aiInited) { _aiInited = true; _aiLoadChat(); }
+  const note = document.getElementById('ai-setup-note');
+  if (note) note.style.display = AI_WORKER_URL ? 'none' : '';
+  const send = document.getElementById('ai-send');
+  if (send) send.disabled = !AI_WORKER_URL;
+  const notes = document.getElementById('ai-notes');
+  if (notes) notes.value = localStorage.getItem('gym_ai_notes') || '';
+  aiRenderChat();
+  aiShowPacket(false);
+  if (AI_WORKER_URL) aiRefreshUsage();
+  else { const u = document.getElementById('ai-usage'); if (u) u.innerHTML = '<span style="font-size:.85rem;color:var(--text2);">Available once the Worker is connected.</span>'; }
+}
+function aiSaveNotes() {
+  const v = (document.getElementById('ai-notes').value || '').trim();
+  localStorage.setItem('gym_ai_notes', v);   // gym_ key: syncs to the cloud with the rest of the profile
+  _aiPacket = null; aiShowPacket(false);
+  showToast('Coach notes saved', 'info');
+}
+function aiPacket(force) {
+  if (force || !_aiPacket) _aiPacket = (typeof window.buildAiContextPacket === 'function') ? window.buildAiContextPacket(8) : '';
+  return _aiPacket;
+}
+function aiShowPacket(force) {
+  const el = document.getElementById('ai-packet');
+  if (!el) return;
+  try { el.textContent = aiPacket(force); } catch (e) { el.textContent = 'Could not build packet: ' + e.message; }
+}
+function aiSuggest(chip) { const q = document.getElementById('ai-q'); q.value = chip.textContent.trim(); q.focus(); }
+function aiNewChat() {
+  if (_aiBusy) return;
+  _aiHistory = []; _aiPacket = null; _aiSaveChat(); aiRenderChat(); aiShowPacket(false);
+}
+function aiEsc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+// Tiny markdown: headings, bullets, numbered lists, bold, code, paragraphs. Escapes first.
+function aiMd(text) {
+  const lines = aiEsc(text).split('\n');
+  const out = []; let list = null;
+  const closeList = () => { if (list) { out.push('</' + list + '>'); list = null; } };
+  const inline = s => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  lines.forEach(raw => {
+    const l = raw.trimEnd();
+    if (!l.trim()) { closeList(); return; }
+    let m;
+    if ((m = l.match(/^#{1,4}\s+(.*)$/))) { closeList(); out.push('<h4>' + inline(m[1]) + '</h4>'); return; }
+    if ((m = l.match(/^\s*[-*•]\s+(.*)$/))) { if (list !== 'ul') { closeList(); out.push('<ul>'); list = 'ul'; } out.push('<li>' + inline(m[1]) + '</li>'); return; }
+    if ((m = l.match(/^\s*\d+[.)]\s+(.*)$/))) { if (list !== 'ol') { closeList(); out.push('<ol>'); list = 'ol'; } out.push('<li>' + inline(m[1]) + '</li>'); return; }
+    closeList(); out.push('<p>' + inline(l) + '</p>');
+  });
+  closeList();
+  return out.join('');
+}
+function aiRenderChat(streamingText) {
+  const box = document.getElementById('ai-chat');
+  if (!box) return;
+  let html = '';
+  if (!_aiHistory.length && streamingText === undefined) html = '<div style="font-size:.85rem;color:var(--text2);padding:6px 2px;">Ask anything about your training. The coach sees your profile, the last 8 weeks of sessions, cardio, nutrition and bodyweight.</div>';
+  _aiHistory.forEach(m => {
+    if (m.role === 'user') html += '<div class="ai-msg user">' + aiEsc(m.content) + '</div>';
+    else html += '<div class="ai-msg ai">' + aiMd(m.content) + (m.meta ? '<div class="ai-meta">' + aiEsc(m.meta) + '</div>' : '') + '</div>';
+  });
+  if (streamingText !== undefined) html += '<div class="ai-msg ai streaming">' + aiMd(streamingText) + '</div>';
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+async function aiToken() {
+  const u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
+  if (!u || typeof u.getIdToken !== 'function') throw new Error('Not signed in to Firebase');
+  return u.getIdToken();
+}
+async function aiSend() {
+  const qEl = document.getElementById('ai-q');
+  const question = (qEl.value || '').trim();
+  if (!question || _aiBusy) return;
+  if (!AI_WORKER_URL) { showToast('AI Worker not connected yet', 'error'); return; }
+  _aiBusy = true;
+  const sendBtn = document.getElementById('ai-send'); sendBtn.disabled = true;
+  const status = document.getElementById('ai-status'); status.textContent = 'Thinking…';
+  const history = _aiHistory.slice(-10).map(m => ({ role: m.role, content: m.content }));
+  _aiHistory.push({ role: 'user', content: question });
+  qEl.value = '';
+  let answer = '';
+  aiRenderChat('');
+  try {
+    const token = await aiToken();
+    const res = await fetch(AI_WORKER_URL + '/ask', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, context: aiPacket(false), history, feature: 'ask', effort: (document.getElementById('ai-effort') || {}).value || 'medium' })
+    });
+    if (!res.ok) { let j = {}; try { j = await res.json(); } catch (e) {} throw new Error(j.error || ('Worker error ' + res.status)); }
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ''; let meta = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        chunk.split('\n').forEach(line => {
+          if (!line.startsWith('data: ')) return;
+          let ev; try { ev = JSON.parse(line.slice(6)); } catch (e) { return; }
+          if (ev.type === 'text') { answer += ev.text; aiRenderChat(answer); }
+          else if (ev.type === 'error') throw new Error(ev.error);
+          else if (ev.type === 'done') {
+            const u = ev.usage || {};
+            meta = '$' + (ev.usd || 0).toFixed(3) + ' · ' + (u.input || 0) + ' in / ' + (u.output || 0) + ' out' + (u.cache_read ? ' / ' + u.cache_read + ' cached' : '') + ' · month $' + (ev.month_total_usd || 0).toFixed(2) + ' of $' + ev.cap;
+            if (ev.stop_reason === 'refusal') answer += '\n\n(The model declined to answer this one.)';
+            if (ev.stop_reason === 'max_tokens') answer += '\n\n(Answer cut off at the length limit.)';
+          }
+        });
+      }
+    }
+    if (!answer) answer = '(No answer returned.)';
+    _aiHistory.push({ role: 'assistant', content: answer, meta });
+    status.textContent = '';
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    if (answer) _aiHistory.push({ role: 'assistant', content: answer + '\n\n(Stream ended early: ' + msg + ')' });
+    else _aiHistory.pop();   // drop the question so he can resend
+    status.textContent = '';
+    showToast('AI: ' + msg, 'error');
+  }
+  _aiBusy = false; sendBtn.disabled = false;
+  _aiSaveChat(); aiRenderChat();
+  if (AI_WORKER_URL) aiRefreshUsage();
+}
+async function aiRefreshUsage() {
+  const el = document.getElementById('ai-usage');
+  if (!el || !AI_WORKER_URL) return;
+  try {
+    const token = await aiToken();
+    const res = await fetch(AI_WORKER_URL + '/usage', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!res.ok) { let j = {}; try { j = await res.json(); } catch (e) {} throw new Error(j.error || ('Worker error ' + res.status)); }
+    const d = await res.json();
+    const pct = d.cap ? Math.min(100, Math.round(100 * d.total_usd / d.cap)) : 0;
+    const col = pct >= 90 ? '#c0392b' : pct >= 70 ? 'var(--orange)' : 'var(--green)';
+    let html = '<div class="ai-tiles">'
+      + '<div class="ai-tile"><div class="v">$' + d.total_usd.toFixed(2) + '</div><div class="l">spent in ' + d.month + '</div></div>'
+      + '<div class="ai-tile"><div class="v">$' + d.remaining_usd.toFixed(2) + '</div><div class="l">left of $' + d.cap + ' Worker cap</div></div>'
+      + '<div class="ai-tile"><div class="v">' + d.requests + '</div><div class="l">requests</div></div>'
+      + '<div class="ai-tile"><div class="v">' + (d.requests ? '$' + (d.total_usd / d.requests).toFixed(3) : '—') + '</div><div class="l">avg per request</div></div>'
+      + '</div><div class="ai-bar"><div style="width:' + pct + '%;background:' + col + ';"></div></div>';
+    const rows = (d.rows || []).slice(-15).reverse();
+    if (rows.length) {
+      html += '<div style="overflow-x:auto;"><table class="ai-table"><tr><th>When</th><th>Feature</th><th class="num">In</th><th class="num">Out</th><th class="num">Cached</th><th class="num">USD</th></tr>';
+      rows.forEach(r => {
+        const t = new Date(r.ts);
+        const when = isNaN(t) ? r.ts : t.toLocaleString('en-AU', { timeZone: 'Australia/Melbourne', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        html += '<tr><td>' + aiEsc(when) + '</td><td>' + aiEsc(r.feature) + '</td><td class="num">' + r.in + '</td><td class="num">' + r.out + '</td><td class="num">' + (r.cr || 0) + '</td><td class="num">$' + (r.usd || 0).toFixed(3) + '</td></tr>';
+      });
+      html += '</table></div>';
+    }
+    html += '<div class="ai-meta">Estimates from token counts at ' + aiEsc(d.model) + ' list prices. The Anthropic Console usage page is the source of truth.</div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<span style="font-size:.85rem;color:#e74c3c;">Usage unavailable: ' + aiEsc((e && e.message) || e) + '</span>';
+  }
+}
 
 </script>
 </body>
