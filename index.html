@@ -93,6 +93,10 @@ select{min-width:140px;cursor:pointer;}
 .ai-table th,.ai-table td{padding:4px 6px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
 .ai-table td.num,.ai-table th.num{text-align:right;}
 #ai-packet{white-space:pre-wrap;font-size:.7rem;max-height:40vh;overflow:auto;background:var(--card2);padding:10px;border-radius:6px;margin-top:8px;}
+.ai-hist-month{font-weight:700;font-size:.85rem;margin:12px 0 6px;}
+.ai-hist-q{font-weight:600;font-size:.86rem;margin:12px 0 4px;padding:8px 10px;background:var(--card);border-radius:8px;}
+.ai-hist-a{font-size:.86rem;line-height:1.5;padding:0 6px;}
+#ai-history .ai-x{margin-bottom:8px;}
 .ai-tiles{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
 .ai-tile{flex:1;min-width:120px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
 .ai-tile .v{font-size:1.3rem;font-weight:700;}
@@ -1089,6 +1093,10 @@ html.theme-light .card{box-shadow:0 2px 8px rgba(0,0,0,.05);}
         <div style="margin-top:8px;"><button class="btn btn-secondary btn-sm" onclick="aiShowPacket(true)">Rebuild packet</button></div>
         <pre id="ai-packet"></pre>
       </details>
+    </div>
+    <div class="card">
+      <h3>History <span id="ai-history-count" class="ai-x-meta" style="font-weight:400;margin-left:6px;"></span> <button class="btn btn-secondary btn-sm" style="margin-left:8px;" onclick="_aiArchLoadCloud(true)">Refresh</button></h3>
+      <div id="ai-history"></div>
     </div>
     <div class="card" id="ai-usage-card">
       <h3>AI usage this month <button class="btn btn-secondary btn-sm" style="margin-left:8px;" onclick="aiRefreshUsage()">Refresh</button></h3>
@@ -12975,7 +12983,7 @@ function _aiLoadChat() {
     const v = JSON.parse(raw || '[]'); _aiHistory = Array.isArray(v) ? v : [];
   } catch (e) { _aiHistory = []; }
 }
-function _aiSaveChat() { try { localStorage.setItem('gym_ai_chat', JSON.stringify(_aiHistory.slice(-40))); } catch (e) {} }   // gym_ key: syncs across devices
+function _aiSaveChat() { try { localStorage.setItem('gym_ai_chat', JSON.stringify(_aiHistory)); } catch (e) {} }   // gym_ key: syncs across devices; length is bounded by AI_THREAD_CAP
 
 function initAiTab() {
   if (!_aiBusy) {
@@ -12992,6 +13000,8 @@ function initAiTab() {
   if (notes) notes.value = localStorage.getItem('gym_ai_notes') || '';
   aiRenderChat();
   aiShowPacket(false);
+  aiRenderArchive();
+  _aiArchLoadCloud(false);
   if (AI_WORKER_URL) aiRefreshUsage();
   else { const u = document.getElementById('ai-usage'); if (u) u.innerHTML = '<span style="font-size:.85rem;color:var(--text2);">Available once the Worker is connected.</span>'; }
 }
@@ -13013,7 +13023,8 @@ function aiShowPacket(force) {
 function aiSuggest(chip) { const q = document.getElementById('ai-q'); q.value = chip.textContent.trim(); q.focus(); }
 function aiNewChat() {
   if (_aiBusy) return;
-  _aiHistory = []; _aiOpen = new Set(); _aiPacket = null; _aiSaveChat(); aiRenderChat(); aiShowPacket(false);
+  if (_aiHistory.length) { aiArchiveCurrent(false); } else { _aiOpen = new Set(); _aiPacket = null; aiRenderChat(); }
+  aiShowPacket(false);
 }
 function aiEsc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 // Small markdown renderer: headings, bullets, numbered lists, pipe tables, bold, code, paragraphs. Escapes first.
@@ -13142,7 +13153,125 @@ async function aiSend() {
   }
   _aiBusy = false; sendBtn.disabled = false;
   _aiSaveChat(); aiRenderChat();
+  if (_aiHistory.length >= AI_THREAD_CAP) { showToast('Long chat moved to History, fresh chat started', 'info'); aiArchiveCurrent(true); }
   if (AI_WORKER_URL) aiRefreshUsage();
+}
+
+// ---- Chat history archive: every finished chat is kept, one cloud document per month ----
+// users/<u>/feeds/ai-chat-YYYY-MM = { threads: '<json>', lastModified, user, month, kind }. Local mirror per month
+// in ai_archive_<user>_<month> (device key, not synced through the main document). Thread = messages since "New chat".
+const AI_THREAD_CAP = 40;          // messages (20 questions) in the live chat before it is archived automatically
+let _aiArchiveLoaded = false;
+let _aiArchiveOpen = null;         // 'month|threadId' expanded in the History card
+function _aiArchKey(month) { return 'ai_archive_' + (window.gymCurrentUser || 'x') + '_' + month; }
+function _aiArchIndexKey() { return 'ai_archive_' + (window.gymCurrentUser || 'x') + '_months'; }
+function _aiArchLoadLocal(month) { try { return JSON.parse(localStorage.getItem(_aiArchKey(month)) || 'null') || { threads: [], deleted: [] }; } catch (e) { return { threads: [], deleted: [] }; } }
+function _aiArchSaveLocal(month, data) { try { localStorage.setItem(_aiArchKey(month), JSON.stringify(data)); } catch (e) {} _aiArchRememberMonth(month); }
+function _aiArchMonths() { try { const v = JSON.parse(localStorage.getItem(_aiArchIndexKey()) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+function _aiArchRememberMonth(m) { const ms = _aiArchMonths(); if (ms.indexOf(m) < 0) { ms.push(m); ms.sort(); try { localStorage.setItem(_aiArchIndexKey(), JSON.stringify(ms)); } catch (e) {} } }
+function _aiFeedRef(month) { return (typeof _fbDocRef !== 'undefined' && _fbDocRef && typeof _fbDocRef.collection === 'function') ? _fbDocRef.collection('feeds').doc('ai-chat-' + month) : null; }
+function _aiParseThreads(data) { try { const t = data && data.threads; return typeof t === 'string' ? JSON.parse(t) : (Array.isArray(t) ? t : []); } catch (e) { return []; } }
+function _aiThreadFromHistory(hist) {
+  const first = hist.find(m => m.role === 'user');
+  const started = (hist[0] && hist[0].ts) || new Date().toISOString();
+  let usd = 0; hist.forEach(m => { const mm = /^\$([\d.]+)/.exec(m.meta || ''); if (mm) usd += parseFloat(mm[1]) || 0; });
+  return { id: 'th_' + started.replace(/[^0-9]/g, '').slice(0, 14) + '_' + Math.random().toString(36).slice(2, 6), started, ended: new Date().toISOString(),
+    title: (first ? first.content : 'Chat').replace(/\s+/g, ' ').slice(0, 140), n: hist.filter(m => m.role === 'user').length, usd: Math.round(usd * 1000) / 1000, messages: hist };
+}
+// Merge local changes into the month document (read, merge by thread id, write). Failure keeps it pending locally.
+async function _aiArchWriteCloud(month) {
+  const local = _aiArchLoadLocal(month);
+  const ref = _aiFeedRef(month);
+  if (!ref) { local.pending = true; _aiArchSaveLocal(month, local); return false; }
+  try {
+    const snap = await ref.get();
+    const byId = {};
+    _aiParseThreads(snap && snap.exists ? snap.data() : null).forEach(t => { byId[t.id] = t; });
+    (local.threads || []).forEach(t => { byId[t.id] = t; });
+    (local.deleted || []).forEach(id => { delete byId[id]; });
+    const threads = Object.values(byId).sort((a, b) => a.started.localeCompare(b.started));
+    await ref.set({ threads: JSON.stringify(threads), lastModified: Date.now(), user: window.gymCurrentUser, month, kind: 'ai-chat' });
+    _aiArchSaveLocal(month, { threads, deleted: [] });
+    return true;
+  } catch (e) { console.warn('[AI archive] cloud write failed', e); local.pending = true; _aiArchSaveLocal(month, local); return false; }
+}
+async function _aiArchLoadCloud(force) {
+  if (_aiArchiveLoaded && !force) return;
+  _aiArchiveLoaded = true;
+  if (typeof _fbDocRef !== 'undefined' && _fbDocRef && typeof _fbDocRef.collection === 'function') {
+    try {
+      const col = await _fbDocRef.collection('feeds').get();
+      const docs = []; col.forEach(dc => docs.push(dc));
+      for (const dc of docs) {
+        if (!/^ai-chat-\d{4}-\d{2}$/.test(dc.id)) continue;
+        const month = dc.id.slice(8);
+        const local = _aiArchLoadLocal(month);
+        if (local.pending) { await _aiArchWriteCloud(month); continue; }   // unsent local edits win, merged
+        _aiArchSaveLocal(month, { threads: _aiParseThreads(dc.data()).sort((a, b) => a.started.localeCompare(b.started)), deleted: [] });
+      }
+    } catch (e) { console.warn('[AI archive] cloud read failed', e); }
+    for (const m of _aiArchMonths()) { if (_aiArchLoadLocal(m).pending) await _aiArchWriteCloud(m); }
+  }
+  aiRenderArchive();
+}
+async function aiArchiveCurrent(silent) {
+  if (!_aiHistory.length) return;
+  const th = _aiThreadFromHistory(_aiHistory);
+  const month = th.started.slice(0, 7);
+  const local = _aiArchLoadLocal(month);
+  local.threads = (local.threads || []).filter(t => t.id !== th.id); local.threads.push(th); local.pending = true; _aiArchSaveLocal(month, local);
+  _aiHistory = []; _aiOpen = new Set(); _aiPacket = null; _aiSaveChat(); aiRenderChat(); aiRenderArchive();
+  if (!silent) showToast('Chat moved to History', 'info');
+  await _aiArchWriteCloud(month);
+  aiRenderArchive();
+}
+async function aiResumeThread(month, id) {
+  if (_aiBusy) return;
+  const local = _aiArchLoadLocal(month);
+  const th = (local.threads || []).find(t => t.id === id); if (!th) return;
+  if (_aiHistory.length) await aiArchiveCurrent(true);
+  _aiHistory = (th.messages || []).slice(); _aiPacket = null; _aiSaveChat();
+  const l2 = _aiArchLoadLocal(month);
+  l2.threads = (l2.threads || []).filter(t => t.id !== id); l2.deleted = (l2.deleted || []).concat([id]); l2.pending = true; _aiArchSaveLocal(month, l2);
+  const n = _aiExchanges().length; _aiOpen = new Set(n ? [n - 1] : []); _aiArchiveOpen = null;
+  aiRenderChat(); aiRenderArchive();
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+  await _aiArchWriteCloud(month);
+  aiRenderArchive();
+}
+async function aiDeleteThread(month, id) {
+  if (!confirm('Delete this chat from History? This cannot be undone.')) return;
+  const local = _aiArchLoadLocal(month);
+  local.threads = (local.threads || []).filter(t => t.id !== id); local.deleted = (local.deleted || []).concat([id]); local.pending = true; _aiArchSaveLocal(month, local);
+  _aiArchiveOpen = null; aiRenderArchive();
+  await _aiArchWriteCloud(month);
+  aiRenderArchive();
+}
+function aiToggleThread(key) { _aiArchiveOpen = _aiArchiveOpen === key ? null : key; aiRenderArchive(); }
+function aiRenderArchive() {
+  const el = document.getElementById('ai-history'); if (!el) return;
+  const months = _aiArchMonths().slice().sort().reverse();
+  let total = 0, html = '';
+  months.forEach(m => {
+    const th = (_aiArchLoadLocal(m).threads || []).slice().sort((a, b) => b.started.localeCompare(a.started));
+    if (!th.length) return;
+    total += th.length;
+    const label = new Date(m + '-01T12:00:00').toLocaleString('en-AU', { month: 'long', year: 'numeric' });
+    html += '<div class="ai-hist-month">' + aiEsc(label) + ' <span class="ai-x-meta">' + th.length + ' chat' + (th.length === 1 ? '' : 's') + ' · $' + th.reduce((sum, t) => sum + (t.usd || 0), 0).toFixed(2) + '</span></div>';
+    th.forEach(t => {
+      const key = m + '|' + t.id; const open = _aiArchiveOpen === key;
+      html += '<div class="ai-x' + (open ? ' open' : '') + '"><div class="ai-x-head" onclick="aiToggleThread(\'' + key + '\')"><span class="ai-x-q">' + aiEsc(t.title) + '</span><span class="ai-x-meta">' + aiEsc(_aiWhen(t.started)) + ' · ' + t.n + ' Q · $' + (t.usd || 0).toFixed(2) + '</span><span class="ai-x-chev">▾</span></div>';
+      if (open) {
+        html += '<div class="ai-x-body"><div style="display:flex;gap:8px;margin:10px 0 6px;flex-wrap:wrap;"><button class="btn btn-secondary btn-sm" onclick="aiResumeThread(\'' + m + '\',\'' + t.id + '\')">Continue this chat</button><button class="btn btn-secondary btn-sm" onclick="aiDeleteThread(\'' + m + '\',\'' + t.id + '\')">Delete</button></div>';
+        const xs = []; (t.messages || []).forEach(mm => { if (mm.role === 'user') xs.push({ q: mm.content, a: '', meta: '' }); else if (xs.length) { xs[xs.length - 1].a = mm.content; xs[xs.length - 1].meta = mm.meta || ''; } });
+        xs.forEach(x => { html += '<div class="ai-hist-q">' + aiEsc(x.q) + '</div><div class="ai-hist-a">' + aiMd(x.a) + (x.meta ? '<div class="ai-x-foot">' + aiEsc(x.meta) + '</div>' : '') + '</div>'; });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+  });
+  const cnt = document.getElementById('ai-history-count'); if (cnt) cnt.textContent = total ? total + ' archived chat' + (total === 1 ? '' : 's') : 'nothing archived yet';
+  el.innerHTML = html || '<div style="font-size:.85rem;color:var(--text2);">Press "New chat" to move the current conversation here. Every chat is kept, month by month, and syncs between your devices.</div>';
 }
 async function aiRefreshUsage() {
   const el = document.getElementById('ai-usage');
