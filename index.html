@@ -125,6 +125,49 @@ input[type=checkbox].set-check{width:20px;height:20px;accent-color:var(--highlig
 .cal-day.other-month.has-workout{opacity:.75;}
 .cal-day.selected{background:var(--highlight);color:#fff;}
 .cal-day.selected::after{background:#fff;}
+/* Plan mode */
+.plan-switch{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:600;color:var(--text2);cursor:pointer;}
+.plan-switch .toggle-slider:before{height:16px;width:16px;}
+.plan-switch .toggle input:checked+.toggle-slider{background:var(--purple);}
+.plan-switch .toggle input:checked+.toggle-slider:before{transform:translateX(18px);}
+.plan-switch-text{color:var(--text2);}
+.plan-switch-text.on{color:var(--purple);}
+.cal-day.planned-day{background:rgba(155,89,182,.28);border-color:rgba(155,89,182,.6);}
+.cal-day.planned-day .cal-day-tag{color:#d7b3e6;}
+.cal-day.planned-day::after{background:var(--purple);}
+.cal-day.planned-day.selected{background:var(--purple);color:#fff;}
+.cal-day.planned-day.selected .cal-day-tag{color:#fff;}
+.cal-grid.plan-mode{grid-template-columns:26px repeat(7,1fr);}
+.cal-wk-col{display:flex;align-items:center;justify-content:center;padding:0;}
+.cal-sel-cb{width:15px;height:15px;accent-color:var(--purple);cursor:pointer;margin:0;}
+.cal-day-cb{position:absolute;top:4px;left:4px;}
+.cal-day.multi-selected{outline:2px solid var(--purple);outline-offset:-2px;}
+.cal-day-kcal{font-size:.62rem;color:var(--text2);margin-top:auto;padding-bottom:6px;}
+.cal-day.has-workout .cal-day-kcal{color:#c9c9d8;}
+.planned-badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:10px;background:var(--purple);color:#fff;font-size:.65rem;font-weight:700;vertical-align:middle;letter-spacing:.3px;}
+.cal-plan-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding:10px 12px;background:rgba(155,89,182,.12);border:1px solid rgba(155,89,182,.4);border-radius:8px;font-size:.8rem;}
+.cal-plan-bar .sep{width:1px;height:20px;background:var(--border);}
+.cal-plan-bar .btn{font-size:.75rem;padding:5px 10px;}
+.btn-purple{background:var(--purple);color:#fff;border:none;}
+.btn-purple:hover{background:#8e44ad;}
+.cal-hover-card{position:absolute;z-index:80;width:300px;max-width:calc(100vw - 32px);background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:.78rem;pointer-events:none;}
+.cal-hover-card h4{margin:0 0 6px;font-size:.85rem;color:var(--highlight2);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.cal-hover-card .hc-ex{margin:4px 0 2px;font-weight:600;color:var(--text);}
+.cal-hover-card .hc-sets{color:var(--text2);font-size:.72rem;line-height:1.35;}
+.cal-hover-card .hc-cardio{margin-top:6px;color:#7fd3e8;font-size:.74rem;}
+.cal-hover-card .hc-food{margin-top:8px;padding-top:8px;border-top:1px solid var(--border);color:var(--text2);font-size:.74rem;}
+.cal-hover-card .hc-food strong{color:#f1c40f;}
+.cal-modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px;}
+.cal-modal-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:420px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.6);}
+.cal-modal-box h3{margin:0 0 8px;font-size:1rem;}
+.cal-modal-box p{font-size:.85rem;color:var(--text2);margin:0 0 14px;line-height:1.4;}
+.cal-modal-btns{display:flex;gap:8px;flex-wrap:wrap;}
+.cal-modal-btns .btn{flex:1 1 auto;}
+.planned-hint{padding:10px 12px;margin-bottom:12px;background:rgba(155,89,182,.14);border:1px solid rgba(155,89,182,.45);border-radius:8px;font-size:.8rem;color:#d7b3e6;}
+.cardio-row{margin-top:10px;padding:10px 12px;background:var(--accent);border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+.cardio-row.swim{background:rgba(52,152,219,.22);}
+.cardio-row.walk{background:rgba(46,204,113,.18);}
+.mini-cal-day.planned-day{background:var(--purple);color:#fff;font-weight:700;}
 .cal-edit-ctrl{display:none !important;}
 #cal-workout-detail.editing .cal-edit-ctrl{display:inline-flex !important;}
 .cal-edit-toggle{background:var(--accent);border:none;color:var(--text);cursor:pointer;font-size:.75rem;font-weight:600;padding:3px 10px;border-radius:6px;transition:all .2s;margin-left:10px;}
@@ -636,8 +679,8 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
         <span style="font-size:.9rem;">Add Core Exercises</span>
       </div>
       <div class="toggle-row">
-        <label class="toggle"><input type="checkbox" id="add-peloton"><span class="toggle-slider"></span></label>
-        <span style="font-size:.9rem;">Add Peloton Ride</span>
+        <label class="toggle"><input type="checkbox" id="add-cardio"><span class="toggle-slider"></span></label>
+        <span style="font-size:.9rem;">Add Cardio <span style="color:var(--text2);font-size:.78rem;">(Peloton, Incline Walk, Swim)</span></span>
       </div>
       <div class="deload-toggle-row">
         <label class="toggle"><input type="checkbox" id="deload-workout"><span class="toggle-slider"></span></label>
@@ -651,26 +694,8 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
     <!-- Core Section -->
     <div id="core-section" style="display:none;"></div>
 
-    <!-- Peloton Section -->
-    <div id="peloton-section" style="display:none;">
-      <div class="card peloton-card">
-        <h3>Peloton Ride</h3>
-        <div class="toggle-row">
-          <label class="toggle"><input type="checkbox" id="peloton-recovery"><span class="toggle-slider"></span></label>
-          <span style="font-size:.9rem;">Recovery Ride</span>
-        </div>
-        <div style="display:flex;gap:20px;flex-wrap:wrap;">
-          <div>
-            <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Average Watts</label>
-            <input type="number" id="peloton-watts" placeholder="Watts" min="0" style="width:120px;">
-          </div>
-          <div>
-            <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Total Minutes</label>
-            <input type="number" id="peloton-minutes" placeholder="Minutes" min="0" style="width:120px;">
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Cardio Section (Peloton / Incline Walk / Swim) -->
+    <div id="cardio-section" style="display:none;"></div>
 
     <button class="btn btn-primary" id="save-workout" style="width:100%;padding:14px;font-size:1rem;margin-top:8px;">
       Save Workout
@@ -690,10 +715,15 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
   <!-- CALENDAR VIEW -->
   <div id="view-calendar" class="view">
     <h2 style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-      <span>Workout Calendar</span>
+      <span style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">Workout Calendar
+        <span class="plan-switch" title="Show planned sessions on the calendar and enable week / month copy">
+          <label class="toggle" style="width:40px;height:22px;"><input type="checkbox" id="cal-plan-switch" onchange="setCalPlanMode(this.checked)"><span class="toggle-slider"></span></label>
+          <span class="plan-switch-text" id="plan-switch-text">Plan</span>
+        </span>
+      </span>
       <button class="btn btn-secondary btn-sm" style="font-size:.78rem;padding:5px 12px;" onclick="openRecentlyDeletedModal()" title="Restore recently deleted workouts (kept 30 days)">🗑 Recently Deleted</button>
     </h2>
-    <div class="card">
+    <div class="card" style="position:relative;">
       <div class="cal-header">
         <button class="btn btn-secondary btn-sm" id="cal-prev">&larr; Prev</button>
         <div style="display:flex;align-items:center;gap:10px;">
@@ -708,6 +738,8 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
       </div>
       <div class="cal-grid" id="cal-grid"></div>
       <div id="cal-year-grid" class="year-grid" style="display:none;"></div>
+      <div id="cal-plan-bar" style="display:none;"></div>
+      <div id="cal-hover-card" class="cal-hover-card" style="display:none;"></div>
     </div>
     <div id="cal-workout-detail" class="card" style="display:none;"></div>
     <div id="cal-log-form" style="display:none;"></div>
@@ -796,6 +828,44 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
         </div>
       </div>
     </div>
+
+    <h2 style="margin-top:32px;">Nutrition &amp; Weight</h2>
+    <div class="filter-bar">
+      <div>
+        <label>Time Range:</label>
+        <select id="nut-range" onchange="renderNutritionAnalytics()">
+          <option value="7">Last 7 Days</option>
+          <option value="30" selected>Last 30 Days</option>
+          <option value="90">Last 90 Days</option>
+          <option value="365">Last 12 Months</option>
+          <option value="0">All Time</option>
+        </select>
+      </div>
+      <div>
+        <label>View by:</label>
+        <select id="nut-gran" onchange="renderNutritionAnalytics()">
+          <option value="day" selected>Day</option>
+          <option value="week">Week</option>
+          <option value="month">Month</option>
+        </select>
+      </div>
+      <span style="font-size:.75rem;color:var(--text2);">Food and bodyweight come from the Coach log, a CSV import, or the Apple Health feed. Day-of-week and body-part filters above do not apply here.</span>
+    </div>
+    <div class="chart-grid" id="nut-stats" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:20px;"></div>
+    <div class="chart-grid">
+      <div class="chart-card full-width">
+        <h4>Calories per day <span style="font-weight:400;">(bars) with 7-day average (line, day view only)</span></h4>
+        <canvas id="chart-nut-kcal"></canvas>
+      </div>
+      <div class="chart-card full-width">
+        <h4>Macros per day (g)</h4>
+        <canvas id="chart-nut-macros"></canvas>
+      </div>
+      <div class="chart-card full-width">
+        <h4>Bodyweight (kg)</h4>
+        <canvas id="chart-nut-weight"></canvas>
+      </div>
+    </div>
   </div>
 
   <!-- INSIGHTS VIEW -->
@@ -873,6 +943,7 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
     <div id="coach-nutrition-log" class="card" style="display:none;">
       <h3>Log Today's Nutrition &amp; Bodyweight <span style="font-size:.75rem;color:var(--text2);font-weight:400;">(any field optional)</span></h3>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;align-items:flex-end;">
+        <div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Calories (kcal)</label><input type="number" id="coach-calories" placeholder="2800" min="0" style="width:100px;"></div>
         <div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Protein (g)</label><input type="number" id="coach-protein" placeholder="200" min="0" style="width:90px;"></div>
         <div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Carbs (g)</label><input type="number" id="coach-carbs" placeholder="350" min="0" style="width:90px;"></div>
         <div><label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Fat (g)</label><input type="number" id="coach-fat" placeholder="90" min="0" style="width:90px;"></div>
@@ -884,6 +955,8 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
       <button class="btn btn-secondary btn-sm" onclick="toggleCoachProfile()">Edit Profile</button>
       <button class="btn btn-secondary btn-sm" onclick="toggleCoachNutrition()">Log Nutrition</button>
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('nut-import-file').click()" title="Import a MyNetDiary (or any) CSV with date, calories, protein, carbs, fat columns">Import Nutrition CSV</button>
+      <input type="file" id="nut-import-file" accept=".csv,.txt,text/csv" style="position:absolute;width:0;height:0;overflow:hidden;opacity:0;" onchange="if(this.files[0]) importNutritionCsvFile(this.files[0]); this.value='';">
       <span style="font-size:.8rem;color:var(--text2);margin-left:8px;">Time Range:</span>
       <select id="coach-time-range" onchange="onCoachTimeRangeChange()" style="min-width:120px;">
         <option value="7">Last 7 Days</option>
@@ -932,6 +1005,7 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
+<div id="cal-modal" class="cal-modal" style="display:none;" onclick="if(event.target===this)calModalResolve(null)"><div class="cal-modal-box" id="cal-modal-box"></div></div>
 
 <!-- Coach Grade Popup -->
 <div class="coach-grade-overlay" id="cgp-overlay" onclick="closeGradePopup()"></div>
@@ -2068,7 +2142,7 @@ function renderLogDatePicker() {
   const selected = document.getElementById('workout-date').value;
   const today = formatDate(new Date());
 
-  const workouts = getWorkouts();
+  const workouts = getDoneWorkouts();
   const workoutDates = new Set(workouts.map(w => w.date));
 
   const firstDay = new Date(ldpYear, ldpMonth, 1);
@@ -2231,6 +2305,84 @@ function _rawSaveWorkouts(all) {
 function getWorkouts() {
   return _rawGetWorkouts().filter(w => !w.deleted);
 }
+// Completed workouts only (planned sessions excluded). Analytics, Insights,
+// Coach and scoring read this; the calendar reads getWorkouts() so indices
+// used by the calendar edit functions stay stable.
+function getDoneWorkouts() {
+  return getWorkouts().filter(w => !w.planned);
+}
+// A planned workout becomes "done" as soon as any set or cardio has real numbers.
+function workoutHasRealData(w) {
+  if (!w) return false;
+  const exOk = (w.exercises || []).some(ex => Object.values(ex.sets || {}).some(s => (parseFloat(s.kg) || 0) > 0 || (parseInt(s.reps) || 0) > 0));
+  if (exOk) return true;
+  if (w.peloton && ((w.peloton.minutes || 0) > 0 || (w.peloton.watts || 0) > 0)) return true;
+  return (w.cardio || []).some(c => (parseFloat(c.minutes) || 0) > 0);
+}
+function recheckPlanned(w) {
+  if (w && w.planned && workoutHasRealData(w)) { w.planned = false; return true; }
+  return false;
+}
+// ===== CARDIO (Incline Walk / Swim; Peloton keeps its own legacy field) =====
+const SWIM_STYLES = ['Freestyle','Breaststroke','Backstroke','Butterfly','Mixed'];
+const RPE_SCALE = [
+  {v:1,label:'Very light',desc:'Barely any effort, could do this all day'},
+  {v:2,label:'Light',desc:'Easy, breathing normal, full conversation'},
+  {v:3,label:'Light-moderate',desc:'Comfortable, can talk in full sentences'},
+  {v:4,label:'Moderate',desc:'Working, still easy to talk'},
+  {v:5,label:'Moderate-hard',desc:'Breathing deeper, talk in short sentences'},
+  {v:6,label:'Hard',desc:'Noticeably hard, a few words at a time'},
+  {v:7,label:'Very hard',desc:'Only a word or two, sustainable 20-30 min max'},
+  {v:8,label:'Very hard+',desc:'Cannot talk, sustainable only a few minutes'},
+  {v:9,label:'Extremely hard',desc:'Near maximal, under 2 minutes'},
+  {v:10,label:'Maximal',desc:'All-out sprint, seconds only'}
+];
+function rpeLabel(v) { const r = RPE_SCALE.find(x => x.v === parseInt(v)); return r ? r.label : ''; }
+function cardioLine(c) {
+  if (!c) return '';
+  if (c.type === 'walk') {
+    const bits = [];
+    if (c.minutes) bits.push(c.minutes + ' min');
+    if (c.incline !== undefined && c.incline !== null && c.incline !== '') bits.push(c.incline + '% incline');
+    if (c.speed) bits.push(c.speed + ' km/h');
+    return 'Incline Walk' + (bits.length ? ' — ' + bits.join(', ') : '');
+  }
+  if (c.type === 'swim') {
+    const bits = [];
+    if (c.minutes) bits.push(c.minutes + ' min');
+    if (c.style) bits.push(c.style);
+    if (c.rpe) bits.push('RPE ' + c.rpe + (rpeLabel(c.rpe) ? ' (' + rpeLabel(c.rpe) + ')' : ''));
+    return 'Swim' + (bits.length ? ' — ' + bits.join(', ') : '');
+  }
+  return '';
+}
+function cardioTypeLabel(t) { return t === 'walk' ? 'Walk' : t === 'swim' ? 'Swim' : t === 'peloton' ? 'Peloton' : capitalize(t || ''); }
+// Minutes of cardio by type for a list of workouts
+function cardioMinutes(workouts) {
+  const out = { peloton: 0, walk: 0, swim: 0 };
+  workouts.forEach(w => {
+    if (w.peloton) out.peloton += parseInt(w.peloton.minutes) || 0;
+    (w.cardio || []).forEach(c => { if (out[c.type] !== undefined) out[c.type] += parseFloat(c.minutes) || 0; });
+  });
+  return out;
+}
+// Body-part / activity tags for a calendar tile
+function workoutTagParts(dayWorkouts) {
+  const parts = [];
+  dayWorkouts.forEach(w => {
+    (w.bodyParts || []).forEach(p => { if (!parts.includes(p)) parts.push(p); });
+    if (w.hasCore && !parts.includes('core')) parts.push('core');
+    if (w.peloton && !parts.includes('peloton')) parts.push('peloton');
+    (w.cardio || []).forEach(c => { const t = cardioTypeLabel(c.type); if (!parts.includes(t)) parts.push(t); });
+  });
+  return parts;
+}
+// ===== PLAN MODE (calendar switch) =====
+// UI preference only: stored under a non-gym_ key so it never triggers a cloud push.
+let calPlanMode = false;
+try { calPlanMode = localStorage.getItem('ui_cal_plan_mode') === '1'; } catch(e) {}
+let calSelectedDates = new Set();
+let calClipboard = null; // { days:[{offset, workout}], mode:'full'|'structure', anchorDow }
 function getDeletedWorkouts() {
   const cutoff = Date.now() - TOMBSTONE_RETENTION_MS;
   return _rawGetWorkouts().filter(w => w.deleted && (w.deletedAt || 0) >= cutoff);
@@ -2760,8 +2912,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Peloton toggle
-  document.getElementById('add-peloton').addEventListener('change', e => {
-    document.getElementById('peloton-section').style.display = e.target.checked ? 'block' : 'none';
+  document.getElementById('cardio-section').innerHTML = cardioSectionHtml('');
+  wireCardioSection('');
+  document.getElementById('add-cardio').addEventListener('change', e => {
+    document.getElementById('cardio-section').style.display = e.target.checked ? 'block' : 'none';
   });
 
   // Save
@@ -3278,8 +3432,8 @@ function renderCoreSection() {
 function saveWorkout() {
   const date = document.getElementById('workout-date').value;
   if (!date) { showToast('Please select a date'); return; }
-  if (exerciseEntries.length === 0 && !document.getElementById('add-peloton').checked) {
-    showToast('Add at least one exercise'); return;
+  if (exerciseEntries.length === 0 && !cardioSectionActive('')) {
+    showToast('Add at least one exercise or a cardio entry'); return;
   }
 
   const workout = {
@@ -3317,41 +3471,16 @@ function saveWorkout() {
     workout.exercises[i].sets = setData;
   });
 
-  // Peloton
-  if (document.getElementById('add-peloton').checked) {
-    const watts = parseInt(document.getElementById('peloton-watts').value);
-    const mins = parseInt(document.getElementById('peloton-minutes').value);
-    workout.peloton = {
-      recovery: document.getElementById('peloton-recovery').checked,
-      watts: isNaN(watts) ? 0 : watts,
-      minutes: isNaN(mins) ? 0 : mins
-    };
-  }
+  // Cardio (Peloton / Incline Walk / Swim)
+  const cardioRead = readCardioSection('');
+  workout.peloton = cardioRead.peloton;
+  if (cardioRead.cardio.length) workout.cardio = cardioRead.cardio;
 
   // Save (merge into existing workout for same date if exists)
   const workouts = getWorkouts();
   const existing = workouts.find(w => w.date === date);
   if (existing) {
-    workout.exercises.forEach(ex => {
-      const match = existing.exercises.find(e => resolveExerciseName(e.name) === resolveExerciseName(ex.name) && (e.pulleyType || 'single') === (ex.pulleyType || 'single'));
-      if (match) {
-        // Consolidate: append sets with new keys
-        const existingKeys = Object.keys(match.sets);
-        const maxNum = existingKeys.reduce((m, k) => { if (k === 'warmup' || k === 'finisher') return Math.max(m, 1); const n = parseInt(k.replace(/\D/g, '')); return isNaN(n) ? m : Math.max(m, n); }, 0);
-        let nextNum = maxNum + 1;
-        Object.entries(ex.sets).forEach(([sk, sv]) => {
-          const prefix = sk.replace(/\d+$/, '');
-          match.sets[prefix + nextNum] = sv;
-          nextNum++;
-        });
-      } else {
-        existing.exercises.push(ex);
-      }
-    });
-    workout.bodyParts.forEach(bp => { if (!existing.bodyParts.includes(bp)) existing.bodyParts.push(bp); });
-    if (workout.hasCore) existing.hasCore = true;
-    if (workout.deload) existing.deload = true;
-    if (workout.peloton && !existing.peloton) existing.peloton = workout.peloton;
+    mergeWorkoutInto(existing, workout);
   } else {
     workouts.push(workout);
     workouts.sort((a,b) => a.date.localeCompare(b.date));
@@ -3367,10 +3496,9 @@ function saveWorkout() {
   exerciseEntries = [];
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
   document.getElementById('add-core').checked = false;
-  document.getElementById('add-peloton').checked = false;
   document.getElementById('deload-workout').checked = false;
   document.getElementById('core-section').style.display = 'none';
-  document.getElementById('peloton-section').style.display = 'none';
+  resetCardioSection('');
   document.getElementById('exercise-sections').innerHTML = '';
 
   // Saved locally and verified. Now confirm cloud sync. We push immediately
@@ -3421,8 +3549,9 @@ function renderYearView() {
 
   document.getElementById('cal-grid').style.display = 'none';
   yearGrid.style.display = 'grid';
+  renderCalPlanBar();
 
-  const workouts = getWorkouts();
+  const workouts = calPlanMode ? getWorkouts() : getDoneWorkouts();
   const workoutMap = {};
   workouts.forEach(w => {
     if (!workoutMap[w.date]) workoutMap[w.date] = [];
@@ -3462,7 +3591,8 @@ function renderYearView() {
       const isToday = ds === today;
       const hasW = !!workoutMap[ds];
       const isDeload = hasW && workoutMap[ds].some(w => w.deload);
-      html += `<div class="mini-cal-day${hasW?' has-workout':''}${isDeload?' deload-day':''}${isToday?' today':''}">${d}</div>`;
+      const isPlanned = hasW && workoutMap[ds].every(w => w.planned);
+      html += `<div class="mini-cal-day${hasW?' has-workout':''}${isDeload && !isPlanned?' deload-day':''}${isPlanned?' planned-day':''}${isToday?' today':''}">${d}</div>`;
     }
 
     // Next month padding
@@ -3489,17 +3619,25 @@ function renderCalendar() {
   const yearGrid = document.getElementById('cal-year-grid');
   grid.style.display = 'grid';
   yearGrid.style.display = 'none';
+  grid.classList.toggle('plan-mode', calPlanMode);
+  const sw = document.getElementById('cal-plan-switch');
+  if (sw) sw.checked = calPlanMode;
+  const swt = document.getElementById('plan-switch-text');
+  if (swt) swt.classList.toggle('on', calPlanMode);
 
   const label = document.getElementById('cal-month-label');
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   label.textContent = months[calMonth] + ' ' + calYear;
 
-  const workouts = getWorkouts();
+  // Plan switch OFF = exactly the old calendar (completed workouts only).
+  // Plan switch ON = planned sessions appear too (purple tiles).
+  const workouts = calPlanMode ? getWorkouts() : getDoneWorkouts();
   const workoutMap = {};
   workouts.forEach(w => {
     if (!workoutMap[w.date]) workoutMap[w.date] = [];
     workoutMap[w.date].push(w);
   });
+  const nutLog = calPlanMode ? getNutritionLog() : {};
 
   const firstDay = new Date(calYear, calMonth, 1);
   const lastDay = new Date(calYear, calMonth + 1, 0);
@@ -3507,85 +3645,313 @@ function renderCalendar() {
   const totalDays = lastDay.getDate();
   const today = formatDate(new Date());
 
-  let html = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => `<div class="cal-day-label">${d}</div>`).join('');
+  const cell = (dateStr, dayNum, isOther) => {
+    const dayWorkouts = workoutMap[dateStr] || [];
+    const hasW = dayWorkouts.length > 0;
+    const allPlanned = hasW && dayWorkouts.every(w => w.planned);
+    const isDeload = dayWorkouts.some(w => w.deload);
+    const isToday = dateStr === today;
+    let tag = '';
+    if (hasW) {
+      const parts = workoutTagParts(dayWorkouts);
+      tag = parts.length > 0 ? parts.map(capitalize).join(' + ') : 'Workout';
+      if (isDeload) tag += ' [D]';
+      if (dayWorkouts.length > 1) tag += ' (' + dayWorkouts.length + ')';
+    } else if (!isOther && dateStr <= today) {
+      tag = 'Rest';
+    }
+    const tagHtml = tag ? `<span class="cal-day-tag" title="${hasW ? (allPlanned ? 'Planned: ' : '') + tag : 'Rest Day'}">${tag}</span>` : '';
+    const sel = calPlanMode && calSelectedDates.has(dateStr);
+    const cls = ['cal-day', isOther ? 'other-month' : '', isToday ? 'today' : '', hasW ? 'has-workout' : '', isDeload && !allPlanned ? 'deload-day' : '', allPlanned ? 'planned-day' : '', sel ? 'multi-selected' : ''].filter(Boolean).join(' ');
+    const cb = calPlanMode ? `<input type="checkbox" class="cal-sel-cb cal-day-cb"${sel ? ' checked' : ''} onclick="event.stopPropagation();calToggleSelect('${dateStr}',this.checked)" title="Select day">` : '';
+    const n = nutLog[dateStr];
+    const kcal = calPlanMode && n && n.calories ? `<span class="cal-day-kcal">${Math.round(n.calories)} kcal</span>` : '';
+    return `<div class="${cls}" data-date="${dateStr}" onclick="calDayClick(event,'${dateStr}')" onmouseenter="calHoverStart(event,'${dateStr}')" onmouseleave="calHoverEnd()" ontouchstart="calTouchStart(event,'${dateStr}')" ontouchend="calTouchEnd()" ontouchmove="calTouchEnd()" ontouchcancel="calTouchEnd()">${cb}<span class="cal-day-num">${dayNum}</span>${tagHtml}${kcal}</div>`;
+  };
 
-  // Previous month padding
+  // Build every cell in order, then lay them out 7 per row (plus a week tick column in plan mode)
+  const cells = [];
   const prevLast = new Date(calYear, calMonth, 0).getDate();
   for (let i = startDow - 1; i >= 0; i--) {
     const pDay = prevLast - i;
-    const pDate = new Date(calYear, calMonth - 1, pDay);
-    const pDateStr = formatDate(pDate);
-    const pDayWorkouts = workoutMap[pDateStr] || [];
-    const pHasW = pDayWorkouts.length > 0;
-    let pTag = '';
-    if (pHasW) {
-      const pParts = [];
-      pDayWorkouts.forEach(w => {
-        (w.bodyParts || []).forEach(p => { if (!pParts.includes(p)) pParts.push(p); });
-        if (w.hasCore && !pParts.includes('core')) pParts.push('core');
-        if (w.peloton && !pParts.includes('peloton')) pParts.push('peloton');
-      });
-      pTag = pParts.length > 0 ? pParts.map(capitalize).join(' + ') : 'Workout';
-      if (pDayWorkouts.some(w => w.deload)) pTag += ' [D]';
-      if (pDayWorkouts.length > 1) pTag += ' (' + pDayWorkouts.length + ')';
-    }
-    const pIsDeload = pDayWorkouts.some(w => w.deload);
-    const pTagHtml = pTag ? `<span class="cal-day-tag" title="${pTag}">${pTag}</span>` : '';
-    html += `<div class="cal-day other-month${pHasW?' has-workout':''}${pIsDeload?' deload-day':''}" data-date="${pDateStr}" onclick="showCalDay('${pDateStr}')"><span class="cal-day-num">${pDay}</span>${pTagHtml}</div>`;
+    const pDateStr = formatDate(new Date(calYear, calMonth - 1, pDay));
+    cells.push({ date: pDateStr, html: cell(pDateStr, pDay, true) });
   }
-
-  // Current month
   for (let d = 1; d <= totalDays; d++) {
     const dateStr = calYear + '-' + String(calMonth+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-    const isToday = dateStr === today;
-    const dayWorkouts = workoutMap[dateStr] || [];
-    const hasW = dayWorkouts.length > 0;
-    let tag = '';
-    if (hasW) {
-      const allParts = [];
-      dayWorkouts.forEach(w => {
-        (w.bodyParts || []).forEach(p => { if (!allParts.includes(p)) allParts.push(p); });
-        if (w.hasCore && !allParts.includes('core')) allParts.push('core');
-        if (w.peloton && !allParts.includes('peloton')) allParts.push('peloton');
-      });
-      tag = allParts.length > 0 ? allParts.map(capitalize).join(' + ') : 'Workout';
-      if (dayWorkouts.some(w => w.deload)) tag += ' [D]';
-      if (dayWorkouts.length > 1) tag += ' (' + dayWorkouts.length + ')';
-    } else {
-      if (dateStr <= today) tag = 'Rest';
-    }
-    const isDeload = dayWorkouts.some(w => w.deload);
-    const tagHtml = tag ? `<span class="cal-day-tag" title="${hasW ? tag : 'Rest Day'}">${tag}</span>` : '';
-    html += `<div class="cal-day${isToday?' today':''}${hasW?' has-workout':''}${isDeload?' deload-day':''}" data-date="${dateStr}" onclick="showCalDay('${dateStr}')"><span class="cal-day-num">${d}</span>${tagHtml}</div>`;
+    cells.push({ date: dateStr, html: cell(dateStr, d, false) });
   }
-
-  // Next month padding
   const endDow = mondayDow(lastDay);
   for (let i = 1; i <= 6 - endDow; i++) {
-    const nDate = new Date(calYear, calMonth + 1, i);
-    const nDateStr = formatDate(nDate);
-    const nDayWorkouts = workoutMap[nDateStr] || [];
-    const nHasW = nDayWorkouts.length > 0;
-    let nTag = '';
-    if (nHasW) {
-      const nParts = [];
-      nDayWorkouts.forEach(w => {
-        (w.bodyParts || []).forEach(p => { if (!nParts.includes(p)) nParts.push(p); });
-        if (w.hasCore && !nParts.includes('core')) nParts.push('core');
-        if (w.peloton && !nParts.includes('peloton')) nParts.push('peloton');
-      });
-      nTag = nParts.length > 0 ? nParts.map(capitalize).join(' + ') : 'Workout';
-      if (nDayWorkouts.some(w => w.deload)) nTag += ' [D]';
-      if (nDayWorkouts.length > 1) nTag += ' (' + nDayWorkouts.length + ')';
+    const nDateStr = formatDate(new Date(calYear, calMonth + 1, i));
+    cells.push({ date: nDateStr, html: cell(nDateStr, i, true) });
+  }
+
+  let html = '';
+  if (calPlanMode) {
+    const monthDates = [];
+    for (let d = 1; d <= totalDays; d++) monthDates.push(calYear + '-' + String(calMonth+1).padStart(2,'0') + '-' + String(d).padStart(2,'0'));
+    const allMonthSel = monthDates.every(d => calSelectedDates.has(d));
+    html += `<div class="cal-day-label cal-wk-col"><input type="checkbox" class="cal-sel-cb"${allMonthSel ? ' checked' : ''} onchange="calSelectMonth(this.checked)" title="Select whole month"></div>`;
+  }
+  html += ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => `<div class="cal-day-label">${d}</div>`).join('');
+  for (let r = 0; r < cells.length; r += 7) {
+    const row = cells.slice(r, r + 7);
+    if (calPlanMode) {
+      const dates = row.map(c => c.date);
+      const allSel = dates.every(d => calSelectedDates.has(d));
+      html += `<div class="cal-wk-col"><input type="checkbox" class="cal-sel-cb"${allSel ? ' checked' : ''} onchange="calSelectWeek(${JSON.stringify(dates).replace(/"/g,'&quot;')},this.checked)" title="Select this week"></div>`;
     }
-    const nIsDeload = nDayWorkouts.some(w => w.deload);
-    const nTagHtml = nTag ? `<span class="cal-day-tag" title="${nTag}">${nTag}</span>` : '';
-    html += `<div class="cal-day other-month${nHasW?' has-workout':''}${nIsDeload?' deload-day':''}" data-date="${nDateStr}" onclick="showCalDay('${nDateStr}')"><span class="cal-day-num">${i}</span>${nTagHtml}</div>`;
+    html += row.map(c => c.html).join('');
   }
 
   grid.innerHTML = html;
+  renderCalPlanBar();
+  calHoverEnd();
   document.getElementById('cal-workout-detail').style.display = 'none';
 }
+
+// ===================== PLAN MODE: switch, selection, copy / paste =====================
+function setCalPlanMode(on) {
+  calPlanMode = !!on;
+  try { localStorage.setItem('ui_cal_plan_mode', calPlanMode ? '1' : '0'); } catch(e) {}
+  if (!calPlanMode) calSelectedDates.clear();
+  renderCalendar();
+}
+function calDayClick(event, dateStr) {
+  if (_calLongPressFired) { _calLongPressFired = false; return; }
+  showCalDay(dateStr);
+}
+function _calSetSelected(dateStr, on) {
+  if (on) calSelectedDates.add(dateStr); else calSelectedDates.delete(dateStr);
+  const el = document.querySelector(`.cal-day[data-date="${dateStr}"]`);
+  if (el) {
+    el.classList.toggle('multi-selected', on);
+    const cb = el.querySelector('.cal-day-cb');
+    if (cb) cb.checked = on;
+  }
+}
+function calToggleSelect(dateStr, on) { _calSetSelected(dateStr, on); renderCalPlanBar(); }
+function calSelectWeek(dates, on) { dates.forEach(d => _calSetSelected(d, on)); renderCalPlanBar(); }
+function calSelectMonth(on) {
+  const total = new Date(calYear, calMonth + 1, 0).getDate();
+  for (let d = 1; d <= total; d++) _calSetSelected(calYear + '-' + String(calMonth+1).padStart(2,'0') + '-' + String(d).padStart(2,'0'), on);
+  document.querySelectorAll('#cal-grid .cal-wk-col input').forEach(cb => { cb.checked = on; });
+  renderCalPlanBar();
+}
+function calClearSelection() { calSelectedDates.clear(); renderCalendar(); }
+function renderCalPlanBar() {
+  const bar = document.getElementById('cal-plan-bar');
+  if (!bar) return;
+  if (!calPlanMode || calViewMode === 'year') { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  const n = calSelectedDates.size;
+  const all = getWorkouts();
+  const withW = [...calSelectedDates].filter(d => all.some(w => w.date === d)).length;
+  let html = `<div class="cal-plan-bar">
+    <span style="color:var(--purple);font-weight:700;">PLAN</span>
+    <span>${n ? n + ' day' + (n > 1 ? 's' : '') + ' selected' + (withW ? ' (' + withW + ' with workouts)' : '') : 'Tick days, a week, or the whole month'}</span>
+    <button class="btn btn-purple" onclick="calCopySelected()"${withW ? '' : ' disabled style="opacity:.5;"'}>Copy selected</button>
+    <button class="btn btn-secondary" onclick="calClearSelection()"${n ? '' : ' disabled style="opacity:.5;"'}>Clear</button>`;
+  if (calClipboard) {
+    const days = calClipboard.days.length;
+    html += `<span class="sep"></span>
+    <span>Clipboard: <strong>${days} day${days > 1 ? 's' : ''}</strong> (${calClipboard.mode === 'full' ? 'with weights &amp; reps' : 'structure only'})</span>
+    <button class="btn btn-purple" onclick="calPasteClipboard()"${n ? '' : ' disabled style="opacity:.5;"'} title="Tick the day the first copied day should land on, then paste">Paste from selected day</button>
+    <button class="btn btn-secondary" onclick="calClipboard=null;renderCalPlanBar();">Clear clipboard</button>`;
+  }
+  html += `</div>`;
+  bar.innerHTML = html;
+  bar.style.display = 'block';
+}
+// Promise-based chooser: calChoice('Title','message',[{label,value,cls}]) -> value (null on dismiss)
+let _calModalResolver = null;
+function calChoice(title, msg, buttons) {
+  return new Promise(resolve => {
+    _calModalResolver = resolve;
+    const box = document.getElementById('cal-modal-box');
+    box.innerHTML = `<h3>${title}</h3><p>${msg}</p><div class="cal-modal-btns">` +
+      buttons.map(b => `<button class="btn ${b.cls || 'btn-secondary'}" onclick="calModalResolve(${JSON.stringify(b.value).replace(/"/g,'&quot;')})">${b.label}</button>`).join('') +
+      `</div>`;
+    document.getElementById('cal-modal').style.display = 'flex';
+  });
+}
+function calModalResolve(v) {
+  document.getElementById('cal-modal').style.display = 'none';
+  const r = _calModalResolver; _calModalResolver = null;
+  if (r) r(v);
+}
+function _addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return formatDate(d);
+}
+function _dayDiff(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000); }
+// Deep-copy a workout as a PLANNED session. mode 'structure' blanks kg/reps and Peloton watts;
+// exercise list, set rows, angles, pulley/weight type and the cardio plan are kept.
+function _cloneAsPlanned(w, mode) {
+  const c = JSON.parse(JSON.stringify(w));
+  delete c.id; delete c.lastEditedAt; delete c.deleted; delete c.deletedAt;
+  c.planned = true;
+  if (mode === 'structure') {
+    (c.exercises || []).forEach(ex => {
+      const keys = sortSetKeys(Object.keys(ex.sets || {}));
+      const blank = {};
+      (keys.length ? keys : ['warmup','set1','set2','set3']).forEach(k => { blank[k] = { kg: 0, reps: 0 }; });
+      ex.sets = blank;
+    });
+    if (c.peloton) c.peloton.watts = 0;
+  }
+  return c;
+}
+async function calCopySelected() {
+  const dates = [...calSelectedDates].sort();
+  if (!dates.length) { showToast('Tick at least one day first'); return; }
+  const all = getWorkouts();
+  const days = [];
+  const anchor = dates[0];
+  dates.forEach(d => {
+    const ws = all.filter(w => w.date === d);
+    if (ws.length) days.push({ offset: _dayDiff(anchor, d), workouts: ws });
+  });
+  if (!days.length) { showToast('None of the selected days has a workout'); return; }
+  const mode = await calChoice('Copy ' + days.length + ' day' + (days.length > 1 ? 's' : ''),
+    'Copy with the weights and reps you lifted, or just the structure (exercises, warm-up and set rows, cardio plan) with blanks to fill in on the day?',
+    [{ label: 'Structure only', value: 'structure', cls: 'btn-purple' }, { label: 'With weights & reps', value: 'full', cls: 'btn-primary' }, { label: 'Cancel', value: null }]);
+  if (!mode) return;
+  calClipboard = { mode, anchorDow: mondayDow(new Date(anchor + 'T12:00:00')), days: days.map(d => ({ offset: d.offset, workouts: d.workouts.map(w => _cloneAsPlanned(w, mode)) })) };
+  calSelectedDates.clear();
+  renderCalendar();
+  showToast('Copied ' + days.length + ' day(s). Go to the target month, tick the day the first copied day should land on, then press Paste.');
+}
+async function calPasteClipboard() {
+  if (!calClipboard) { showToast('Nothing copied yet'); return; }
+  const sel = [...calSelectedDates].sort();
+  if (!sel.length) { showToast('Tick the day the first copied day should land on'); return; }
+  const target = sel[0];
+  const tDow = mondayDow(new Date(target + 'T12:00:00'));
+  if (tDow !== calClipboard.anchorDow) {
+    const names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const go = await calChoice('Weekday mismatch', 'The copied block starts on a ' + names[calClipboard.anchorDow] + ' but you ticked a ' + names[tDow] + '. Paste anyway (days shift by weekday) or cancel and tick a ' + names[calClipboard.anchorDow] + '?',
+      [{ label: 'Paste anyway', value: 'go', cls: 'btn-purple' }, { label: 'Cancel', value: null }]);
+    if (!go) return;
+  }
+  const plan = calClipboard.days.map(d => ({ date: _addDays(target, d.offset), workouts: d.workouts }));
+  const clashes = plan.filter(p => getWorkouts().some(w => w.date === p.date));
+  const decisions = {};
+  let bulk = null; // 'replace' | 'skip'
+  for (const c of clashes) {
+    if (bulk) { decisions[c.date] = bulk; continue; }
+    const existing = getWorkouts().filter(w => w.date === c.date);
+    const what = existing.map(w => (w.planned ? 'planned ' : '') + workoutTagParts([w]).map(capitalize).join(' + ')).join(', ');
+    const v = await calChoice(toDMY(c.date) + ' already has a workout', 'Existing: ' + what + '. Replace it with the copied session, or skip this day?',
+      [{ label: 'Replace', value: 'replace', cls: 'btn-purple' }, { label: 'Skip', value: 'skip' }, { label: 'Replace all', value: 'replace-all', cls: 'btn-primary' }, { label: 'Skip all', value: 'skip-all' }, { label: 'Cancel paste', value: null }]);
+    if (v === null) return;
+    if (v === 'replace-all') { bulk = 'replace'; decisions[c.date] = 'replace'; }
+    else if (v === 'skip-all') { bulk = 'skip'; decisions[c.date] = 'skip'; }
+    else decisions[c.date] = v;
+  }
+  let added = 0, skipped = 0;
+  plan.forEach(p => {
+    if (decisions[p.date] === 'skip') { skipped++; return; }
+    if (decisions[p.date] === 'replace') softDeleteWorkoutsByDate(p.date);
+    const ws = getWorkouts();
+    p.workouts.forEach(w => { const c = JSON.parse(JSON.stringify(w)); c.date = p.date; ws.push(c); });
+    ws.sort((a, b) => a.date.localeCompare(b.date));
+    saveWorkouts(ws);
+    added++;
+  });
+  calSelectedDates.clear();
+  renderCalendar();
+  showToast('Pasted ' + added + ' planned day(s)' + (skipped ? ', skipped ' + skipped : '') + '. Syncing...', 'info');
+  if (typeof gymPushToCloud === 'function') gymPushToCloud().then(ok => { if (ok !== false) showToast('✓ Plan synced to cloud', 'success'); else showToast('⚠ Saved locally, cloud sync failed', 'error'); }).catch(() => {});
+}
+function toggleCalPlanned(dateStr, gIdx) {
+  const workouts = getWorkouts();
+  const w = workouts[gIdx];
+  if (!w) return;
+  w.planned = !w.planned;
+  saveWorkouts(workouts);
+  renderCalendar();
+  showCalDay(dateStr);
+  refreshAnalyticsAndInsights();
+  showToast(w.planned ? 'Marked as planned (excluded from analytics)' : 'Marked complete');
+}
+
+// ===================== HOVER CARD (desktop hover, phone long-press) =====================
+let _calHoverTimer = null, _calTouchTimer = null, _calLongPressFired = false;
+function buildDayHoverHtml(dateStr) {
+  const list = (calPlanMode ? getWorkouts() : getDoneWorkouts()).filter(w => w.date === dateStr);
+  const nut = getNutritionLog()[dateStr];
+  const bwv = getBodyweightLog()[dateStr];
+  let html = '';
+  if (!list.length) {
+    html += `<h4>${toDMY(dateStr)} <span style="color:var(--text2);font-weight:400;font-size:.75rem;">Rest day</span></h4>`;
+  }
+  list.forEach(w => {
+    const title = workoutTagParts([w]).map(capitalize).join(' + ') || 'Workout';
+    html += `<h4>${toDMY(dateStr)} — ${title}${w.planned ? '<span class="planned-badge">PLANNED</span>' : ''}${w.deload ? ' <span style="color:var(--orange);font-size:.7rem;">[Deload]</span>' : ''}</h4>`;
+    (w.exercises || []).forEach(ex => {
+      const keys = sortSetKeys(Object.keys(ex.sets || {}));
+      const isBW = isBWExerciseName(ex.name);
+      const isAssisted = ex.name === 'Assisted Pull-ups';
+      const sets = keys.map(k => {
+        const st = ex.sets[k];
+        const lbl = k.startsWith('warmup') ? 'W' + (k === 'warmup' ? '1' : k.replace('warmup','')) : k.startsWith('finisher') ? 'F' + (k === 'finisher' ? '1' : k.replace('finisher','')) : 'S' + k.replace('set','');
+        const blank = !(st.kg > 0 || st.reps > 0);
+        if (blank) return lbl + ' —';
+        const kg = isBW ? (st.kg > 0 ? 'BW+' + st.kg : 'BW') : isAssisted ? '-' + st.kg : st.kg;
+        return lbl + ' ' + kg + '×' + st.reps;
+      });
+      html += `<div class="hc-ex">${escapeHtml(ex.name)}${ex.angle ? ' (' + escapeHtml(ex.angle) + ')' : ''}</div><div class="hc-sets">${sets.length ? sets.join(' · ') : 'no sets'}</div>`;
+    });
+    if (w.peloton) html += `<div class="hc-cardio">Peloton ${w.peloton.recovery ? '(recovery) ' : ''}— ${w.peloton.minutes || 0} min${w.peloton.watts ? ', ' + w.peloton.watts + ' W avg' : ''}</div>`;
+    (w.cardio || []).forEach(c => { html += `<div class="hc-cardio">${escapeHtml(cardioLine(c))}</div>`; });
+  });
+  if (nut && (nut.calories || nut.protein || nut.carbs || nut.fat)) {
+    const kcal = nut.calories ? Math.round(nut.calories) : Math.round((nut.protein||0)*4 + (nut.carbs||0)*4 + (nut.fat||0)*9);
+    html += `<div class="hc-food"><strong>${kcal.toLocaleString()} kcal</strong> · P ${nut.protein||0} g · C ${nut.carbs||0} g · F ${nut.fat||0} g${bwv ? ' · ' + bwv + ' kg' : ''}</div>`;
+  } else {
+    html += `<div class="hc-food">No food logged${bwv ? ' · ' + bwv + ' kg' : ''}</div>`;
+  }
+  return html;
+}
+function _calShowHover(cellEl, dateStr) {
+  const card = document.getElementById('cal-hover-card');
+  const host = cellEl.closest('.card');
+  if (!card || !host) return;
+  card.innerHTML = buildDayHoverHtml(dateStr);
+  card.style.display = 'block';
+  const hr = host.getBoundingClientRect(), cr = cellEl.getBoundingClientRect();
+  const cw = card.offsetWidth, ch = card.offsetHeight;
+  let left = cr.right - hr.left + 8;
+  if (left + cw > hr.width - 8) left = cr.left - hr.left - cw - 8;
+  if (left < 8) left = Math.max(8, Math.min(hr.width - cw - 8, cr.left - hr.left));
+  let top = cr.top - hr.top;
+  if (top + ch > hr.height - 8) top = Math.max(8, hr.height - ch - 8);
+  card.style.left = left + 'px';
+  card.style.top = top + 'px';
+}
+function calHoverStart(event, dateStr) {
+  if (!window.matchMedia || !window.matchMedia('(hover:hover)').matches) return;
+  const el = event.currentTarget;
+  clearTimeout(_calHoverTimer);
+  _calHoverTimer = setTimeout(() => _calShowHover(el, dateStr), 220);
+}
+function calHoverEnd() {
+  clearTimeout(_calHoverTimer);
+  const card = document.getElementById('cal-hover-card');
+  if (card) card.style.display = 'none';
+}
+function calTouchStart(event, dateStr) {
+  const el = event.currentTarget;
+  clearTimeout(_calTouchTimer);
+  _calTouchTimer = setTimeout(() => { _calLongPressFired = true; _calShowHover(el, dateStr); }, 450);
+}
+function calTouchEnd() { clearTimeout(_calTouchTimer); }
+document.addEventListener('touchstart', e => {
+  const card = document.getElementById('cal-hover-card');
+  if (card && card.style.display !== 'none' && !e.target.closest('.cal-day')) { card.style.display = 'none'; }
+}, { passive: true });
 
 function mergeDayWorkouts(dateStr) {
   const workouts = getWorkouts();
@@ -3687,15 +4053,23 @@ function showCalDay(dateStr) {
   const wtLabels = { per_arm: 'per arm', per_leg: 'per leg', per_side: 'per side', total: 'total' };
   let html = '';
 
-  html += `<div class="card" style="margin-bottom:12px;border-left:3px solid var(--highlight);">`;
+  const isPlanned = !!workout.planned;
+  html += `<div class="card" style="margin-bottom:12px;border-left:3px solid ${isPlanned ? 'var(--purple)' : 'var(--highlight)'};">`;
   const deloadBadge = workout.deload ? '<span class="deload-badge">Deload</span>' : '';
-  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-    <h3 style="margin:0;">${toDMY(dateStr)} — ${workout.bodyParts.map(capitalize).join(' + ')}${workout.hasCore?' + Core':''}${deloadBadge}</h3>
-    <div style="display:flex;align-items:center;gap:8px;">
+  const plannedBadge = isPlanned ? '<span class="planned-badge">PLANNED</span>' : '';
+  const titleParts = workoutTagParts([workout]).map(capitalize).join(' + ') || 'Workout';
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+    <h3 style="margin:0;">${toDMY(dateStr)} — ${titleParts}${deloadBadge}${plannedBadge}</h3>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <button class="cal-edit-toggle${isPlanned ? '' : ' active'}" style="${isPlanned ? 'background:var(--purple);color:#fff;' : ''}" onclick="toggleCalPlanned('${dateStr}',${workoutGlobalIdx})" title="${isPlanned ? 'Mark this session as done (counts in analytics)' : 'Mark as planned (hidden from analytics)'}">${isPlanned ? '&#10003; Mark Complete' : 'Mark as Planned'}</button>
       <button class="cal-edit-toggle${calEditModeActive && calEditModeDate === dateStr ? ' active' : ''}" id="cal-edit-toggle-btn" onclick="toggleCalEdit('${dateStr}')" title="Toggle edit mode">${calEditModeActive && calEditModeDate === dateStr ? '&#10003; Done' : '&#9998; Edit'}</button>
       <button class="cal-edit-ctrl cal-edit-toggle" onclick="toggleCalDeload('${dateStr}',${workoutGlobalIdx})" title="Toggle deload">${workout.deload ? 'Remove Deload' : 'Mark as Deload'}</button>
     </div>
   </div>`;
+  if (isPlanned) {
+    html += `<div class="planned-hint">Planned session. Type your weights and reps as you go, press <strong>Save all</strong> when done, and it becomes a completed workout. Use + Set / + Warm-up for anything extra.
+      <div style="margin-top:8px;"><button class="btn btn-purple btn-sm" onclick="saveCalPlannedAll('${dateStr}',${workoutGlobalIdx})">&#10003; Save all</button></div></div>`;
+  }
   html += `<div id="cal-ex-list-${workoutGlobalIdx}">`;
   workout.exercises.forEach((ex, exIdx) => {
     const setKeys = sortSetKeys(Object.keys(ex.sets));
@@ -3764,14 +4138,16 @@ function showCalDay(dateStr) {
         const isBW = isBWExerciseName(ex.name);
         const hasExtra = isBW && s.kg > 0;
         const kgSuffix = isAssisted ? ' assist' : isBW ? '' : ex.weightType === 'per_arm' ? (ex.bodyPart === 'legs' ? ' /leg' : ' /arm') : ex.weightType === 'per_side' ? ' /side' : '';
-        const kgDisplay = isBW ? (hasExtra ? 'BW + ' + s.kg + ' kg' : 'BW') : (isAssisted ? '-' + s.kg + ' kg' : s.kg + ' kg') + kgSuffix;
+        const blankSet = isPlanned && !(s.kg > 0 || s.reps > 0);
+        const kgDisplay = blankSet ? '<span style="color:var(--text2);">—</span>' : isBW ? (hasExtra ? 'BW + ' + s.kg + ' kg' : 'BW') : (isAssisted ? '-' + s.kg + ' kg' : s.kg + ' kg') + kgSuffix;
+        const repsDisplay = blankSet ? '<span style="color:var(--text2);">—</span>' : s.reps;
         const editId = dateStr + '-' + workoutGlobalIdx + '-' + exIdx + '-' + sk;
         html += `<tr id="row-${editId}" class="cal-set-row" draggable="false" data-gidx="${workoutGlobalIdx}" data-exidx="${exIdx}" data-setkey="${sk}" data-skidx="${skIdx}"
           ondragover="onCalSetDragOver(event)" ondrop="onCalSetDrop(event,${workoutGlobalIdx},${exIdx},'${sk}','${dateStr}')" ondragleave="onCalSetDragLeave(event)">
           <td class="cal-edit-ctrl" style="width:30px;"><span class="set-drag-handle" draggable="true" ondragstart="onCalSetDragStart(event,${workoutGlobalIdx},${exIdx},'${sk}','${dateStr}')" ondragend="onCalSetDragEnd(event)">&#9776;</span></td>
           <td>${formatSetLabel(sk)}</td>
           <td id="td-kg-${editId}">${kgDisplay}</td>
-          <td id="td-reps-${editId}">${s.reps}</td>
+          <td id="td-reps-${editId}">${repsDisplay}</td>
           <td style="white-space:nowrap;"><span class="cal-edit-ctrl"><button class="btn btn-secondary btn-sm" style="padding:2px 8px;font-size:.7rem;" onclick="editCalFieldSingle('${dateStr}',${workoutGlobalIdx},${exIdx},'${sk}')">&#9998;</button><button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:.7rem;margin-left:3px;" onclick="deleteCalSet(${workoutGlobalIdx},${exIdx},'${sk}','${dateStr}')">&#10005;</button></span></td>
         </tr>`;
       });
@@ -3788,6 +4164,19 @@ function showCalDay(dateStr) {
       <span class="cal-edit-ctrl"><button class="btn btn-secondary btn-sm" style="padding:2px 8px;font-size:.7rem;" onclick="editCalPelotonMulti(${workoutGlobalIdx})">&#9998;</button></span>
     </div>`;
   }
+
+  (workout.cardio || []).forEach((c, ci) => {
+    html += `<div id="cardio-row-${workoutGlobalIdx}-${ci}" class="cardio-row ${c.type}">
+      <div><strong>${c.type === 'swim' ? '🏊 ' : '🚶 '}</strong>${escapeHtml(cardioLine(c))}</div>
+      <span class="cal-edit-ctrl" style="gap:6px;"><button class="btn btn-secondary btn-sm" style="padding:2px 8px;font-size:.7rem;" onclick="editCalCardio(${workoutGlobalIdx},${ci})">&#9998;</button><button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:.7rem;" onclick="deleteCalCardio(${workoutGlobalIdx},${ci})">&#10005;</button></span>
+    </div>`;
+  });
+  html += `<div class="cal-edit-ctrl" style="margin-top:10px;gap:6px;flex-wrap:wrap;">
+    <span style="font-size:.78rem;color:var(--text2);align-self:center;">Add cardio:</span>
+    ${workout.peloton ? '' : `<button class="btn btn-secondary btn-sm" style="font-size:.75rem;" onclick="addCalCardio(${workoutGlobalIdx},'peloton')">+ Peloton</button>`}
+    <button class="btn btn-secondary btn-sm" style="font-size:.75rem;" onclick="addCalCardio(${workoutGlobalIdx},'walk')">+ Incline Walk</button>
+    <button class="btn btn-secondary btn-sm" style="font-size:.75rem;" onclick="addCalCardio(${workoutGlobalIdx},'swim')">+ Swim</button>
+  </div>`;
 
   html += `<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
     <span class="cal-edit-ctrl"><button class="btn btn-danger btn-sm" onclick="deleteWorkoutByIndex(${workoutGlobalIdx})">Delete Workout</button></span>
@@ -3839,17 +4228,33 @@ function showCalDay(dateStr) {
         Peloton Ride <span style="color:var(--text2);font-size:.75rem;">(${workout.peloton.watts}w, ${workout.peloton.minutes}min)</span>
       </label>`;
     }
+    (workout.cardio || []).forEach((c, ci) => {
+      html += `<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer;font-size:.85rem;">
+        <input type="checkbox" class="copy-ex-check-${workoutGlobalIdx}" data-widx="${workoutGlobalIdx}" data-exidx="cardio-${ci}" style="accent-color:var(--highlight);">
+        ${escapeHtml(cardioLine(c))}
+      </label>`;
+    });
     html += `<button class="btn btn-primary btn-sm" style="width:100%;margin-top:10px;" onclick="copySelectedExercises(${workoutGlobalIdx})">Copy Selected</button>
       </div>
     </div>`;
 
   detail.innerHTML = html;
   detail.style.display = 'block';
+  if (isPlanned) { calEditModeActive = true; calEditModeDate = dateStr; }
   // Set or remove editing class based on current state
   if (calEditModeActive) {
     detail.classList.add('editing');
   } else {
     detail.classList.remove('editing');
+  }
+  if (isPlanned) {
+    // Fill-in mode: every set row becomes an input straight away, one Save all button for the whole session.
+    workout.exercises.forEach((ex, exIdx) => editCalFieldMulti(dateStr, workoutGlobalIdx, exIdx, true));
+    const btnWrap = document.createElement('div');
+    btnWrap.style.cssText = 'margin-top:12px;text-align:right;';
+    btnWrap.innerHTML = `<button class="btn btn-purple" onclick="saveCalPlannedAll('${dateStr}',${workoutGlobalIdx})">&#10003; Save all &amp; mark complete</button>`;
+    const list = document.getElementById('cal-ex-list-' + workoutGlobalIdx);
+    if (list) list.appendChild(btnWrap);
   }
 }
 
@@ -4468,13 +4873,15 @@ function saveCalFieldSingle(dateStr, globalIdx, exIdx, setKey) {
     ex.sets[setKey].reps = newReps;
   }
   if (isBW && newKg > 0) ex.extraWeight = true;
+  const becameDone = recheckPlanned(workouts[globalIdx]);
   saveWorkouts(workouts);
-  showToast('Set updated');
+  showToast(becameDone ? 'Set saved — session marked complete' : 'Set updated');
+  if (becameDone) renderCalendar();
   showCalDay(dateStr);
   refreshAnalyticsAndInsights();
 }
 
-function editCalFieldMulti(dateStr, globalIdx, exIdx) {
+function editCalFieldMulti(dateStr, globalIdx, exIdx, noSaveButton) {
   // Open ALL sets for this exercise for editing at once
   const workouts = getWorkouts();
   const workout = workouts[globalIdx];
@@ -4505,7 +4912,7 @@ function editCalFieldMulti(dateStr, globalIdx, exIdx) {
   });
 
   // Add a single save-all button on the last row
-  if (allSetKeys.length > 0) {
+  if (allSetKeys.length > 0 && !noSaveButton) {
     const lastKey = allSetKeys[allSetKeys.length - 1];
     const lastEditId = dateStr + '-' + globalIdx + '-' + exIdx + '-' + lastKey;
     const lastRow = document.getElementById('row-' + lastEditId);
@@ -4516,14 +4923,10 @@ function editCalFieldMulti(dateStr, globalIdx, exIdx) {
   }
 }
 
-function saveCalFieldMulti(dateStr, globalIdx, exIdx) {
-  const workouts = getWorkouts();
-  if (!workouts[globalIdx] || !workouts[globalIdx].exercises[exIdx]) return;
-  const ex = workouts[globalIdx].exercises[exIdx];
+// Read the open multi-edit inputs for one exercise. Returns the new sets object, or null on a duplicate set type.
+function _collectMultiEditSets(dateStr, globalIdx, exIdx, ex) {
   const isBW = isBWExerciseName(ex.name);
   const allSetKeys = Object.keys(ex.sets);
-
-  // Build new sets object to handle renames — detect duplicate key conflicts
   const newSets = {};
   let hasDuplicateKey = false;
   allSetKeys.forEach(sk => {
@@ -4538,16 +4941,42 @@ function saveCalFieldMulti(dateStr, globalIdx, exIdx) {
     if (newSets[newKey]) { hasDuplicateKey = true; }
     newSets[newKey] = { kg: newKg, reps: newReps };
   });
-  if (hasDuplicateKey) {
-    showToast('Two sets have the same type — please choose unique set types');
-    return;
-  }
-  ex.sets = reorderSetsObj(newSets);
-
+  return hasDuplicateKey ? null : reorderSetsObj(newSets);
+}
+function saveCalFieldMulti(dateStr, globalIdx, exIdx) {
+  const workouts = getWorkouts();
+  if (!workouts[globalIdx] || !workouts[globalIdx].exercises[exIdx]) return;
+  const ex = workouts[globalIdx].exercises[exIdx];
+  const newSets = _collectMultiEditSets(dateStr, globalIdx, exIdx, ex);
+  if (!newSets) { showToast('Two sets have the same type — please choose unique set types'); return; }
+  ex.sets = newSets;
+  const becameDone = recheckPlanned(workouts[globalIdx]);
   saveWorkouts(workouts);
-  showToast('Updated successfully');
+  showToast(becameDone ? 'Saved — session marked complete' : 'Updated successfully');
+  if (becameDone) renderCalendar();
   showCalDay(dateStr);
   refreshAnalyticsAndInsights();
+}
+// Planned session: save every exercise's open inputs in one go and mark complete.
+function saveCalPlannedAll(dateStr, globalIdx) {
+  const workouts = getWorkouts();
+  const w = workouts[globalIdx];
+  if (!w) return;
+  for (let exIdx = 0; exIdx < w.exercises.length; exIdx++) {
+    const ex = w.exercises[exIdx];
+    const newSets = _collectMultiEditSets(dateStr, globalIdx, exIdx, ex);
+    if (!newSets) { showToast(ex.name + ': two sets have the same type — please choose unique set types'); return; }
+    ex.sets = newSets;
+  }
+  const hadData = workoutHasRealData(w);
+  w.planned = false;
+  saveWorkouts(workouts);
+  calEditModeActive = false; calEditModeDate = null;
+  renderCalendar();
+  showCalDay(dateStr);
+  refreshAnalyticsAndInsights();
+  showToast(hadData ? '✓ Session saved and marked complete' : '✓ Marked complete (no numbers entered)', 'success');
+  if (typeof gymPushToCloud === 'function') gymPushToCloud().catch(() => {});
 }
 
 function editCalPelotonMulti(globalIdx) {
@@ -4574,10 +5003,198 @@ function saveCalPelotonMulti(globalIdx) {
   if (workout && workout.peloton) {
     workout.peloton.watts = newWatts;
     workout.peloton.minutes = newMins;
+    const becameDone = recheckPlanned(workout);
     saveWorkouts(workouts);
     showToast('Peloton updated');
+    if (becameDone) renderCalendar();
     showCalDay(workout.date);
   }
+}
+
+// ===================== CALENDAR CARDIO (walk / swim) EDIT =====================
+function _cardioFieldsHtml(prefix, c) {
+  const w = c || {};
+  if (w.type === 'swim') {
+    return `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <div><label style="font-size:.72rem;color:var(--text2);display:block;">Minutes</label><input type="number" id="${prefix}-minutes" value="${w.minutes || ''}" min="0" placeholder="min" style="width:80px;"></div>
+      <div><label style="font-size:.72rem;color:var(--text2);display:block;">Style</label><select id="${prefix}-style" style="width:130px;">${SWIM_STYLES.map(st => `<option value="${st}"${(w.style || 'Freestyle') === st ? ' selected' : ''}>${st}</option>`).join('')}</select></div>
+      <div><label style="font-size:.72rem;color:var(--text2);display:block;">Effort (RPE)</label><select id="${prefix}-rpe" style="width:210px;">${RPE_SCALE.map(r => `<option value="${r.v}"${parseInt(w.rpe || 5) === r.v ? ' selected' : ''} title="${r.desc}">${r.v} — ${r.label}</option>`).join('')}</select></div>
+    </div>`;
+  }
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+    <div><label style="font-size:.72rem;color:var(--text2);display:block;">Minutes</label><input type="number" id="${prefix}-minutes" value="${w.minutes || ''}" min="0" placeholder="min" style="width:80px;"></div>
+    <div><label style="font-size:.72rem;color:var(--text2);display:block;">Incline %</label><input type="number" id="${prefix}-incline" value="${w.incline !== undefined && w.incline !== null ? w.incline : ''}" min="0" max="40" step="0.5" placeholder="%" style="width:80px;"></div>
+    <div><label style="font-size:.72rem;color:var(--text2);display:block;">Speed km/h</label><input type="number" id="${prefix}-speed" value="${w.speed || ''}" min="0" step="0.1" placeholder="km/h" style="width:90px;"></div>
+  </div>`;
+}
+function _readCardioFields(prefix, type) {
+  const num = id => { const el = document.getElementById(prefix + '-' + id); if (!el) return null; const v = parseFloat(el.value); return isNaN(v) ? null : v; };
+  if (type === 'swim') {
+    const st = document.getElementById(prefix + '-style'), rp = document.getElementById(prefix + '-rpe');
+    return { type: 'swim', minutes: num('minutes') || 0, style: st ? st.value : 'Freestyle', rpe: rp ? parseInt(rp.value) || 5 : 5 };
+  }
+  return { type: 'walk', minutes: num('minutes') || 0, incline: num('incline') === null ? 0 : num('incline'), speed: num('speed') || 0 };
+}
+// Cardio card used by the Log tab (prefix '') and the calendar inline form (prefix 'cal-').
+// Peloton keeps its historical ids ({p}add-peloton, {p}peloton-recovery/-watts/-minutes).
+function cardioSectionHtml(prefix, preset) {
+  const pr = preset || {};
+  const pel = pr.peloton || null;
+  const walk = (pr.cardio || []).find(c => c.type === 'walk') || null;
+  const swim = (pr.cardio || []).find(c => c.type === 'swim') || null;
+  return `<div class="card peloton-card">
+    <h3>Cardio</h3>
+    <div class="toggle-row">
+      <label class="toggle"><input type="checkbox" id="${prefix}add-peloton"${pel ? ' checked' : ''}><span class="toggle-slider"></span></label>
+      <span style="font-size:.9rem;">Peloton Ride</span>
+    </div>
+    <div id="${prefix}peloton-section" style="display:${pel ? 'block' : 'none'};margin:0 0 14px 12px;padding-left:12px;border-left:2px solid var(--border);">
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" id="${prefix}peloton-recovery"${pel && pel.recovery ? ' checked' : ''}><span class="toggle-slider"></span></label>
+        <span style="font-size:.9rem;">Recovery Ride</span>
+      </div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;">
+        <div>
+          <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Average Watts</label>
+          <input type="number" id="${prefix}peloton-watts" placeholder="Watts" min="0" style="width:120px;" value="${pel && pel.watts ? pel.watts : ''}">
+        </div>
+        <div>
+          <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Total Minutes</label>
+          <input type="number" id="${prefix}peloton-minutes" placeholder="Minutes" min="0" style="width:120px;" value="${pel && pel.minutes ? pel.minutes : ''}">
+        </div>
+      </div>
+    </div>
+    <div class="toggle-row">
+      <label class="toggle"><input type="checkbox" id="${prefix}add-walk"${walk ? ' checked' : ''}><span class="toggle-slider"></span></label>
+      <span style="font-size:.9rem;">Incline Walk</span>
+    </div>
+    <div id="${prefix}walk-section" style="display:${walk ? 'block' : 'none'};margin:0 0 14px 12px;padding-left:12px;border-left:2px solid var(--border);">
+      ${_cardioFieldsHtml(prefix + 'walk', walk || { type: 'walk' })}
+    </div>
+    <div class="toggle-row">
+      <label class="toggle"><input type="checkbox" id="${prefix}add-swim"${swim ? ' checked' : ''}><span class="toggle-slider"></span></label>
+      <span style="font-size:.9rem;">Swim</span>
+    </div>
+    <div id="${prefix}swim-section" style="display:${swim ? 'block' : 'none'};margin:0 0 4px 12px;padding-left:12px;border-left:2px solid var(--border);">
+      ${_cardioFieldsHtml(prefix + 'swim', swim || { type: 'swim' })}
+      <div style="font-size:.72rem;color:var(--text2);margin-top:6px;">RPE: 1-2 very light · 3-4 easy, can talk · 5-6 breathing hard, short sentences · 7-8 a few words only · 9-10 all-out.</div>
+    </div>
+  </div>`;
+}
+function wireCardioSection(prefix) {
+  const link = (cbId, secId) => {
+    const cb = document.getElementById(cbId), sec = document.getElementById(secId);
+    if (cb && sec) cb.addEventListener('change', e => { sec.style.display = e.target.checked ? 'block' : 'none'; });
+  };
+  link(prefix + 'add-cardio', prefix + 'cardio-section');
+  link(prefix + 'add-peloton', prefix + 'peloton-section');
+  link(prefix + 'add-walk', prefix + 'walk-section');
+  link(prefix + 'add-swim', prefix + 'swim-section');
+}
+function cardioSectionActive(prefix) {
+  return ['add-peloton','add-walk','add-swim'].some(id => { const el = document.getElementById(prefix + id); return el && el.checked; });
+}
+// -> { peloton: obj|null, cardio: [walk?, swim?] }
+function readCardioSection(prefix) {
+  const on = id => { const el = document.getElementById(prefix + id); return el && el.checked; };
+  const out = { peloton: null, cardio: [] };
+  if (on('add-peloton')) {
+    const watts = parseInt((document.getElementById(prefix + 'peloton-watts') || {}).value);
+    const mins = parseInt((document.getElementById(prefix + 'peloton-minutes') || {}).value);
+    out.peloton = { recovery: !!on('peloton-recovery'), watts: isNaN(watts) ? 0 : watts, minutes: isNaN(mins) ? 0 : mins };
+  }
+  if (on('add-walk')) out.cardio.push(_readCardioFields(prefix + 'walk', 'walk'));
+  if (on('add-swim')) out.cardio.push(_readCardioFields(prefix + 'swim', 'swim'));
+  return out;
+}
+function resetCardioSection(prefix) {
+  const sec = document.getElementById(prefix + 'cardio-section');
+  if (sec) { sec.innerHTML = cardioSectionHtml(prefix); sec.style.display = 'none'; wireCardioSection(prefix); }
+  const cb = document.getElementById(prefix + 'add-cardio');
+  if (cb) cb.checked = false;
+}
+// Merge an incoming workout (from a save form) into an existing one on the same date.
+// If the existing one is a planned session, blank planned rows of matched exercises are
+// dropped first so the real sets replace them instead of stacking behind them.
+function mergeWorkoutInto(existingW, workout) {
+  workout.exercises.forEach(ex => {
+    const match = existingW.exercises.find(e => resolveExerciseName(e.name) === resolveExerciseName(ex.name) && (e.pulleyType || 'single') === (ex.pulleyType || 'single'));
+    if (match) {
+      if (existingW.planned) {
+        Object.keys(match.sets).forEach(k => { const st = match.sets[k]; if (!(st.kg > 0 || st.reps > 0)) delete match.sets[k]; });
+      }
+      const existingKeys = Object.keys(match.sets);
+      const maxNum = existingKeys.reduce((m, k) => { if (k === 'warmup' || k === 'finisher') return Math.max(m, 1); const n = parseInt(k.replace(/\D/g, '')); return isNaN(n) ? m : Math.max(m, n); }, 0);
+      let nextNum = maxNum + 1;
+      Object.entries(ex.sets).forEach(([sk, sv]) => {
+        const prefix = sk.replace(/\d+$/, '');
+        match.sets[prefix + nextNum] = sv;
+        nextNum++;
+      });
+      match.sets = reorderSetsObj(match.sets);
+    } else {
+      existingW.exercises.push(ex);
+    }
+  });
+  workout.bodyParts.forEach(bp => { if (!existingW.bodyParts.includes(bp)) existingW.bodyParts.push(bp); });
+  if (workout.hasCore) existingW.hasCore = true;
+  if (workout.deload) existingW.deload = true;
+  if (workout.peloton && !existingW.peloton) existingW.peloton = workout.peloton;
+  else if (workout.peloton && existingW.planned) existingW.peloton = workout.peloton;
+  if (workout.cardio && workout.cardio.length) {
+    const keep = (existingW.cardio || []).filter(c => !workout.cardio.some(n => n.type === c.type));
+    existingW.cardio = keep.concat(workout.cardio);
+  }
+  recheckPlanned(existingW);
+}
+function editCalCardio(globalIdx, ci) {
+  const workouts = getWorkouts();
+  const w = workouts[globalIdx];
+  if (!w || !w.cardio || !w.cardio[ci]) return;
+  const row = document.getElementById('cardio-row-' + globalIdx + '-' + ci);
+  if (!row) return;
+  const prefix = 'inp-cardio-' + globalIdx + '-' + ci;
+  row.innerHTML = `<div style="flex:1;"><strong>${w.cardio[ci].type === 'swim' ? 'Swim' : 'Incline Walk'}</strong>${_cardioFieldsHtml(prefix, w.cardio[ci])}</div>
+    <button class="btn btn-success btn-sm" style="padding:4px 10px;font-size:.75rem;" onclick="saveCalCardio(${globalIdx},${ci})">&#10003;</button>`;
+}
+function saveCalCardio(globalIdx, ci) {
+  const workouts = getWorkouts();
+  const w = workouts[globalIdx];
+  if (!w || !w.cardio || !w.cardio[ci]) return;
+  w.cardio[ci] = _readCardioFields('inp-cardio-' + globalIdx + '-' + ci, w.cardio[ci].type);
+  const becameDone = recheckPlanned(w);
+  saveWorkouts(workouts);
+  showToast('Cardio updated');
+  renderCalendar();
+  showCalDay(w.date);
+}
+function deleteCalCardio(globalIdx, ci) {
+  const workouts = getWorkouts();
+  const w = workouts[globalIdx];
+  if (!w || !w.cardio || !w.cardio[ci]) return;
+  if (!confirm('Remove this cardio entry?')) return;
+  w.cardio.splice(ci, 1);
+  if (!w.cardio.length) delete w.cardio;
+  saveWorkouts(workouts);
+  renderCalendar();
+  showCalDay(w.date);
+}
+function addCalCardio(globalIdx, type) {
+  const workouts = getWorkouts();
+  const w = workouts[globalIdx];
+  if (!w) return;
+  if (type === 'peloton') {
+    if (!w.peloton) w.peloton = { recovery: false, watts: 0, minutes: 0 };
+    saveWorkouts(workouts);
+    showCalDay(w.date);
+    setTimeout(() => editCalPelotonMulti(globalIdx), 50);
+    return;
+  }
+  if (!w.cardio) w.cardio = [];
+  w.cardio.push(type === 'swim' ? { type: 'swim', minutes: 0, style: 'Freestyle', rpe: 5 } : { type: 'walk', minutes: 0, incline: 0, speed: 0 });
+  saveWorkouts(workouts);
+  showCalDay(w.date);
+  setTimeout(() => editCalCardio(globalIdx, w.cardio.length - 1), 50);
 }
 
 // ===================== REFRESH ANALYTICS & INSIGHTS AFTER CHANGES =====================
@@ -4744,6 +5361,7 @@ function onCalSetDrop(event, targetGIdx, targetExIdx, targetSetKey, dateStr) {
 // ===================== COPY/PASTE EXERCISE FUNCTIONALITY =====================
 let copiedExercises = [];
 let copiedPeloton = null;
+let copiedCardio = [];
 
 function toggleCopyPopup(workoutGlobalIdx) {
   const popup = document.getElementById('copy-popup-' + workoutGlobalIdx);
@@ -4788,11 +5406,15 @@ function copySelectedExercises(workoutGlobalIdx) {
 
   copiedExercises = [];
   copiedPeloton = null;
+  copiedCardio = [];
 
   checks.forEach(cb => {
     const exIdx = cb.dataset.exidx;
     if (exIdx === 'peloton') {
       copiedPeloton = JSON.parse(JSON.stringify(workout.peloton));
+    } else if (String(exIdx).startsWith('cardio-')) {
+      const c = (workout.cardio || [])[parseInt(exIdx.replace('cardio-', ''))];
+      if (c) copiedCardio.push(JSON.parse(JSON.stringify(c)));
     } else {
       const idx = parseInt(exIdx);
       const ex = JSON.parse(JSON.stringify(workout.exercises[idx]));
@@ -4812,7 +5434,7 @@ function copySelectedExercises(workoutGlobalIdx) {
     }
   });
 
-  if (copiedExercises.length === 0 && !copiedPeloton) {
+  if (copiedExercises.length === 0 && !copiedPeloton && copiedCardio.length === 0) {
     showToast('No sets selected to copy');
     return;
   }
@@ -4825,7 +5447,7 @@ function copySelectedExercises(workoutGlobalIdx) {
 }
 
 function pasteExercisesToDate(targetDate) {
-  if (copiedExercises.length === 0 && !copiedPeloton) {
+  if (copiedExercises.length === 0 && !copiedPeloton && copiedCardio.length === 0) {
     showToast('No exercises copied yet. Select exercises from a workout and click "Copy Selected" first.');
     return;
   }
@@ -4874,8 +5496,8 @@ function pasteExercisesToDate(targetDate) {
         <span style="font-size:.9rem;">Add Core Exercises</span>
       </div>
       <div class="toggle-row">
-        <label class="toggle"><input type="checkbox" id="cal-add-peloton"${copiedPeloton ? ' checked' : ''}><span class="toggle-slider"></span></label>
-        <span style="font-size:.9rem;">Add Peloton Ride</span>
+        <label class="toggle"><input type="checkbox" id="cal-add-cardio"${(copiedPeloton || copiedCardio.length) ? ' checked' : ''}><span class="toggle-slider"></span></label>
+        <span style="font-size:.9rem;">Add Cardio <span style="color:var(--text2);font-size:.78rem;">(Peloton, Incline Walk, Swim)</span></span>
       </div>
       <div class="deload-toggle-row">
         <label class="toggle"><input type="checkbox" id="cal-deload-workout"><span class="toggle-slider"></span></label>
@@ -4885,25 +5507,7 @@ function pasteExercisesToDate(targetDate) {
 
     <div id="cal-exercise-sections"></div>
     <div id="cal-core-section" style="display:${hasCoreExercises ? 'block' : 'none'};"></div>
-    <div id="cal-peloton-section" style="display:${copiedPeloton ? 'block' : 'none'};">
-      <div class="card peloton-card">
-        <h3>Peloton Ride</h3>
-        <div class="toggle-row">
-          <label class="toggle"><input type="checkbox" id="cal-peloton-recovery"${copiedPeloton && copiedPeloton.recovery ? ' checked' : ''}><span class="toggle-slider"></span></label>
-          <span style="font-size:.9rem;">Recovery Ride</span>
-        </div>
-        <div style="display:flex;gap:20px;flex-wrap:wrap;">
-          <div>
-            <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Average Watts</label>
-            <input type="number" id="cal-peloton-watts" placeholder="Watts" min="0" style="width:120px;" value="${copiedPeloton ? copiedPeloton.watts : ''}">
-          </div>
-          <div>
-            <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Total Minutes</label>
-            <input type="number" id="cal-peloton-minutes" placeholder="Minutes" min="0" style="width:120px;" value="${copiedPeloton ? copiedPeloton.minutes : ''}">
-          </div>
-        </div>
-      </div>
-    </div>
+    <div id="cal-cardio-section" style="display:${(copiedPeloton || copiedCardio.length) ? 'block' : 'none'};">${cardioSectionHtml('cal-', { peloton: copiedPeloton, cardio: copiedCardio })}</div>
 
     <button class="btn btn-primary" style="width:100%;padding:14px;font-size:1rem;margin-top:8px;" onclick="saveCalLogWorkout()">
       Save Workout
@@ -4959,10 +5563,8 @@ function pasteExercisesToDate(targetDate) {
     if (e.target.checked) renderCalCoreSection();
   });
 
-  // Peloton toggle
-  document.getElementById('cal-add-peloton').addEventListener('change', e => {
-    document.getElementById('cal-peloton-section').style.display = e.target.checked ? 'block' : 'none';
-  });
+  // Cardio toggles
+  wireCardioSection('cal-');
 
   // Render the pre-filled exercises
   renderCalExerciseSections();
@@ -5008,8 +5610,8 @@ function goToLogWithDate(dateStr) {
         <span style="font-size:.9rem;">Add Core Exercises</span>
       </div>
       <div class="toggle-row">
-        <label class="toggle"><input type="checkbox" id="cal-add-peloton"><span class="toggle-slider"></span></label>
-        <span style="font-size:.9rem;">Add Peloton Ride</span>
+        <label class="toggle"><input type="checkbox" id="cal-add-cardio"><span class="toggle-slider"></span></label>
+        <span style="font-size:.9rem;">Add Cardio <span style="color:var(--text2);font-size:.78rem;">(Peloton, Incline Walk, Swim)</span></span>
       </div>
       <div class="deload-toggle-row">
         <label class="toggle"><input type="checkbox" id="cal-deload-workout"><span class="toggle-slider"></span></label>
@@ -5019,25 +5621,7 @@ function goToLogWithDate(dateStr) {
 
     <div id="cal-exercise-sections"></div>
     <div id="cal-core-section" style="display:none;"></div>
-    <div id="cal-peloton-section" style="display:none;">
-      <div class="card peloton-card">
-        <h3>Peloton Ride</h3>
-        <div class="toggle-row">
-          <label class="toggle"><input type="checkbox" id="cal-peloton-recovery"><span class="toggle-slider"></span></label>
-          <span style="font-size:.9rem;">Recovery Ride</span>
-        </div>
-        <div style="display:flex;gap:20px;flex-wrap:wrap;">
-          <div>
-            <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Average Watts</label>
-            <input type="number" id="cal-peloton-watts" placeholder="Watts" min="0" style="width:120px;">
-          </div>
-          <div>
-            <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:4px;">Total Minutes</label>
-            <input type="number" id="cal-peloton-minutes" placeholder="Minutes" min="0" style="width:120px;">
-          </div>
-        </div>
-      </div>
-    </div>
+    <div id="cal-cardio-section" style="display:none;">${cardioSectionHtml('cal-')}</div>
 
     <button class="btn btn-primary" style="width:100%;padding:14px;font-size:1rem;margin-top:8px;" onclick="saveCalLogWorkout()">
       Save Workout
@@ -5066,10 +5650,8 @@ function goToLogWithDate(dateStr) {
     if (e.target.checked) renderCalCoreSection();
   });
 
-  // Peloton toggle
-  document.getElementById('cal-add-peloton').addEventListener('change', e => {
-    document.getElementById('cal-peloton-section').style.display = e.target.checked ? 'block' : 'none';
-  });
+  // Cardio toggles
+  wireCardioSection('cal-');
 
   // Scroll to form
   container.scrollIntoView({ behavior: 'smooth' });
@@ -5137,8 +5719,8 @@ function renderCalCoreSection() {
 
 function saveCalLogWorkout() {
   if (!calLogDate) { showToast('No date selected'); return; }
-  if (exerciseEntries.length === 0 && !(document.getElementById('cal-add-peloton') && document.getElementById('cal-add-peloton').checked)) {
-    showToast('Add at least one exercise'); return;
+  if (exerciseEntries.length === 0 && !cardioSectionActive('cal-')) {
+    showToast('Add at least one exercise or a cardio entry'); return;
   }
 
   const workout = {
@@ -5176,40 +5758,16 @@ function saveCalLogWorkout() {
     workout.exercises[i].sets = setData;
   });
 
-  // Peloton
-  if (document.getElementById('cal-add-peloton') && document.getElementById('cal-add-peloton').checked) {
-    const watts = parseInt(document.getElementById('cal-peloton-watts').value);
-    const mins = parseInt(document.getElementById('cal-peloton-minutes').value);
-    workout.peloton = {
-      recovery: document.getElementById('cal-peloton-recovery') ? document.getElementById('cal-peloton-recovery').checked : false,
-      watts: isNaN(watts) ? 0 : watts,
-      minutes: isNaN(mins) ? 0 : mins
-    };
-  }
+  // Cardio (Peloton / Incline Walk / Swim)
+  const cardioRead = readCardioSection('cal-');
+  workout.peloton = cardioRead.peloton;
+  if (cardioRead.cardio.length) workout.cardio = cardioRead.cardio;
 
   // Save (merge into existing workout for same date if exists)
   const workouts = getWorkouts();
   const existingW = workouts.find(w => w.date === calLogDate);
   if (existingW) {
-    workout.exercises.forEach(ex => {
-      const match = existingW.exercises.find(e => resolveExerciseName(e.name) === resolveExerciseName(ex.name) && (e.pulleyType || 'single') === (ex.pulleyType || 'single'));
-      if (match) {
-        const existingKeys = Object.keys(match.sets);
-        const maxNum = existingKeys.reduce((m, k) => { if (k === 'warmup' || k === 'finisher') return Math.max(m, 1); const n = parseInt(k.replace(/\D/g, '')); return isNaN(n) ? m : Math.max(m, n); }, 0);
-        let nextNum = maxNum + 1;
-        Object.entries(ex.sets).forEach(([sk, sv]) => {
-          const prefix = sk.replace(/\d+$/, '');
-          match.sets[prefix + nextNum] = sv;
-          nextNum++;
-        });
-      } else {
-        existingW.exercises.push(ex);
-      }
-    });
-    workout.bodyParts.forEach(bp => { if (!existingW.bodyParts.includes(bp)) existingW.bodyParts.push(bp); });
-    if (workout.hasCore) existingW.hasCore = true;
-    if (workout.deload) existingW.deload = true;
-    if (workout.peloton && !existingW.peloton) existingW.peloton = workout.peloton;
+    mergeWorkoutInto(existingW, workout);
   } else {
     workouts.push(workout);
     workouts.sort((a,b) => a.date.localeCompare(b.date));
@@ -5333,12 +5891,12 @@ function reorderSetsObj(setsObj) {
 }
 
 // ===================== EXERCISE TOOLTIP (Calendar) =====================
-let _tooltipWorkoutsCache = null;
+var _tooltipWorkoutsCache = null; // var: hoisted so a save during load (id backfill) cannot hit a TDZ error
 function invalidateTooltipCache() { _tooltipWorkoutsCache = null; }
 function showExerciseTooltip(event, exerciseName, tooltipId) {
   const el = document.getElementById(tooltipId);
   if (!el) return;
-  if (!_tooltipWorkoutsCache) _tooltipWorkoutsCache = getWorkouts();
+  if (!_tooltipWorkoutsCache) _tooltipWorkoutsCache = getDoneWorkouts();
   const allWorkouts = _tooltipWorkoutsCache;
   // Gather all sets across all workouts for this exercise
   let allKg = [], allReps = [], totalSets = 0;
@@ -5416,7 +5974,7 @@ function toggleAnalyticsBodyPart(bp) {
     if (v === '') btn.classList.toggle('active', analyticsBodyPartFilter.size === 0);
     else btn.classList.toggle('active', analyticsBodyPartFilter.has(v));
   });
-  populateExerciseDropdown('analytics-exercise', getWorkouts());
+  populateExerciseDropdown('analytics-exercise', getDoneWorkouts());
   refreshAnalytics();
 }
 
@@ -5439,7 +5997,7 @@ function refreshAnalytics() {
   const range = parseInt(document.getElementById('analytics-range').value);
   const exFilter = document.getElementById('analytics-exercise').value;
   const deloadFilter = document.getElementById('analytics-deload').value;
-  let workouts = getWorkouts();
+  let workouts = getDoneWorkouts();
 
   // Filter by deload
   if (deloadFilter === 'exclude') {
@@ -5492,6 +6050,7 @@ function refreshAnalytics() {
   renderChartBodyParts(workouts);
   renderChartFrequency(workouts);
   renderChartWeekly(workouts, exFilter);
+  try { renderNutritionAnalytics(); } catch(e) { console.error('[NutritionAnalytics]', e); }
 }
 
 function populateExerciseDropdown(selectId, workouts) {
@@ -5567,7 +6126,7 @@ function getAngleForExercise(name) {
 }
 
 function populateInsightExercises() {
-  let workouts = getWorkouts();
+  let workouts = getDoneWorkouts();
   const deloadFilter = document.getElementById('insight-deload').value;
   if (deloadFilter === 'exclude') workouts = workouts.filter(w => !w.deload);
   else if (deloadFilter === 'only') workouts = workouts.filter(w => !!w.deload);
@@ -6124,7 +6683,7 @@ function refreshInsights() {
   const deloadFilter = document.getElementById('insight-deload').value;
   const container = document.getElementById('insights-content');
   const summaryEl = document.getElementById('insight-day-summary');
-  let workouts = getWorkouts();
+  let workouts = getDoneWorkouts();
 
   // Filter by deload
   if (deloadFilter === 'exclude') {
@@ -7208,6 +7767,15 @@ let _cacheKey = '';
 
 function getProfile() { try { return JSON.parse(localStorage.getItem('gym_coach_profile')||'null'); } catch(e) { return null; } }
 function saveProfileData(p) { localStorage.setItem('gym_coach_profile', JSON.stringify(p)); }
+function nutKcal(n) { if (!n) return 0; if (n.calories) return Math.round(n.calories); return Math.round((n.protein||0)*4 + (n.carbs||0)*4 + (n.fat||0)*9); }
+// Expose what the calendar (hover card, kcal tiles), Analytics tab and inline HTML handlers need from this module.
+window.getNutritionLog = function() { return getNutritionLog(); };
+window.getBodyweightLog = function() { return getBodyweightLog(); };
+window.getProfile = function() { return getProfile(); };
+window.nutKcal = nutKcal;
+window.renderNutritionAnalytics = function() { return renderNutritionAnalytics(); };
+window.importNutritionCsvFile = function(f) { return importNutritionCsvFile(f); };
+window.renderRecovery = function() { return renderRecovery(); };
 function getNutritionLog() { try { const v=JSON.parse(localStorage.getItem('gym_nutrition_log')||'{}'); return (v&&typeof v==='object')?v:{}; } catch(e) { return {}; } }
 function getBodyweightLog() { try { const v=JSON.parse(localStorage.getItem('gym_bodyweight_log')||'{}'); return (v&&typeof v==='object')?v:{}; } catch(e) { return {}; } }
 function todayStr() { return melbourneDateStr(new Date()); }
@@ -7399,7 +7967,7 @@ function pelotonFatigueSets(peloton) {
 }
 
 function buildCache() {
-  const workouts = getWorkouts();
+  const workouts = getDoneWorkouts();
   const key = workouts.length+'_'+(workouts.length?workouts[workouts.length-1].date:'');
   if(_coachCache && _cacheKey===key) return _coachCache;
 
@@ -9329,6 +9897,20 @@ function renderRecovery() {
   html += '<div class="coach-metric"><span class="cm-label">Weeks Since Deload</span><span class="cm-value" style="color:'+(weeksSinceDeload>=6?'#e74c3c':weeksSinceDeload>=4?'var(--orange)':'var(--green)')+'">'+weeksSinceDeload+'</span></div>';
   html += '</div>';
 
+  // Weekly cardio minutes (Peloton / Incline Walk / Swim)
+  const cm7 = cardioMinutes(getRecentWorkouts(7));
+  const cmTotal = Math.round(cm7.peloton + cm7.walk + cm7.swim);
+  const cardioTip = infoTip(
+    '<div class="tip-section"><strong>What it is:</strong> Minutes of cardio logged in the last 7 days, split by type.</div>'+
+    '<div class="tip-section"><strong>Why it matters:</strong> Cardio adds systemic fatigue the lifting metrics above do not see. 150 min/week of moderate work (or 75 min hard) is the health baseline; more than ~300 min alongside 4 lifting days starts to eat into recovery.</div>'
+  );
+  html += '<div class="card"><h3>Weekly Cardio (7-Day)'+cardioTip+'</h3>';
+  html += '<div class="coach-metric"><span class="cm-label">Peloton</span><span class="cm-value">'+Math.round(cm7.peloton)+' min</span></div>';
+  html += '<div class="coach-metric"><span class="cm-label">Incline Walk</span><span class="cm-value">'+Math.round(cm7.walk)+' min</span></div>';
+  html += '<div class="coach-metric"><span class="cm-label">Swim</span><span class="cm-value">'+Math.round(cm7.swim)+' min</span></div>';
+  html += '<div class="coach-metric" style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px;"><span class="cm-label"><strong>Total</strong></span><span class="cm-value" style="color:'+(cmTotal>300?'var(--orange)':cmTotal>=150?'var(--green)':'var(--text2)')+';">'+cmTotal+' min</span></div>';
+  html += '</div>';
+
   // Deload suggestion
   if(weeksSinceDeload>=4) {
     html += '<div class="coach-alert '+(weeksSinceDeload>=6?'danger':'warning')+'"><div class="alert-title">Deload '+(weeksSinceDeload>=6?'Overdue':'Approaching')+'</div>';
@@ -10068,7 +10650,7 @@ function renderNutritionCoach() {
       avgP += n.protein||0;
       avgC += n.carbs||0;
       avgF += n.fat||0;
-      avgK += (n.protein||0)*4 + (n.carbs||0)*4 + (n.fat||0)*9;
+      avgK += nutKcal(n);
     });
     avgP = Math.round(avgP/logDates.length);
     avgC = Math.round(avgC/logDates.length);
@@ -10085,7 +10667,7 @@ function renderNutritionCoach() {
 
     logDates.forEach(d => {
       const n = nutLog[d];
-      const totalCal = (n.protein||0)*4 + (n.carbs||0)*4 + (n.fat||0)*9;
+      const totalCal = nutKcal(n);
       html += '<div class="coach-metric"><span class="cm-label">'+d+'</span><span class="cm-value">P:'+(n.protein||0)+'g C:'+(n.carbs||0)+'g F:'+(n.fat||0)+'g = '+totalCal+' kcal</span></div>';
     });
     html += '</div>';
@@ -11163,6 +11745,212 @@ function _doUpdateTrainingMap() {
 // Make the stored functions work
 
 
+// ===================== NUTRITION CSV IMPORT (MyNetDiary or any date/kcal/P/C/F file) =====================
+function _parseCsv(text) {
+  const rows = []; let row = [], field = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i+1] === '"') { field += '"'; i++; } else q = false; }
+      else field += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',' || ch === ';' || ch === '\t') { row.push(field); field = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i+1] === '\n') i++; row.push(field); field = ''; if (row.some(x => x.trim() !== '')) rows.push(row); row = []; }
+    else field += ch;
+  }
+  if (field !== '' || row.length) { row.push(field); if (row.some(x => x.trim() !== '')) rows.push(row); }
+  return rows;
+}
+function _parseAnyDate(v) {
+  if (!v) return null;
+  v = String(v).trim();
+  let m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1] + '-' + m[2].padStart(2,'0') + '-' + m[3].padStart(2,'0');
+  m = v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/);
+  if (m) {
+    let a = parseInt(m[1]), b = parseInt(m[2]), y = parseInt(m[3]); if (y < 100) y += 2000;
+    // Australian default D/M/Y; fall back to M/D/Y when the first number cannot be a day's month partner
+    let d = a, mo = b; if (a <= 12 && b > 12) { d = b; mo = a; }
+    return y + '-' + String(mo).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+  }
+  const t = Date.parse(v);
+  if (!isNaN(t)) return formatDate(new Date(t));
+  return null;
+}
+function importNutritionCsvFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const rows = _parseCsv(String(e.target.result || ''));
+      if (rows.length < 2) { showToast('CSV looks empty'); return; }
+      const hdr = rows[0].map(h => String(h || '').trim().toLowerCase());
+      const find = (re) => hdr.findIndex(h => re.test(h));
+      const iDate = find(/^date|date$|^day$/);
+      const iKcal = find(/calor|energy|kcal/);
+      const iP = find(/protein/);
+      const iC = find(/carb/);
+      const iF = find(/^fat|total fat|fats?$|fat \(/);
+      const iW = find(/^weight|body ?weight|^bw/);
+      if (iDate < 0) { showToast('No date column found in the CSV header'); return; }
+      if (iKcal < 0 && iP < 0 && iC < 0 && iF < 0) { showToast('No calories / protein / carbs / fat columns found'); return; }
+      const num = (r, i) => { if (i < 0) return 0; const v = parseFloat(String(r[i] || '').replace(/[^0-9.\-]/g, '')); return isNaN(v) ? 0 : v; };
+      const agg = {}; const bw = {};
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        const d = _parseAnyDate(row[iDate]);
+        if (!d) continue;
+        if (!agg[d]) agg[d] = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+        agg[d].calories += num(row, iKcal); agg[d].protein += num(row, iP); agg[d].carbs += num(row, iC); agg[d].fat += num(row, iF);
+        const w = num(row, iW); if (w > 30 && w < 300) bw[d] = w;
+      }
+      const dates = Object.keys(agg);
+      if (!dates.length) { showToast('No rows with a readable date'); return; }
+      const log = getNutritionLog();
+      dates.forEach(d => {
+        const a = agg[d];
+        const entry = { protein: Math.round(a.protein), carbs: Math.round(a.carbs), fat: Math.round(a.fat) };
+        if (a.calories) entry.calories = Math.round(a.calories);
+        log[d] = entry;
+      });
+      localStorage.setItem('gym_nutrition_log', JSON.stringify(log));
+      const bwDates = Object.keys(bw);
+      if (bwDates.length) {
+        const bwLog = getBodyweightLog();
+        bwDates.forEach(d => { bwLog[d] = bw[d]; });
+        localStorage.setItem('gym_bodyweight_log', JSON.stringify(bwLog));
+      }
+      _coachCache = null;
+      showToast('Imported nutrition for ' + dates.length + ' day(s)' + (bwDates.length ? ' and ' + bwDates.length + ' bodyweight entries' : '') + ' (' + dates.sort()[0] + ' to ' + dates.sort()[dates.length-1] + ')', 'success');
+      const activeChip = document.querySelector('#coach-subnav .chip.selected');
+      if (activeChip) switchCoachPanel(activeChip.dataset.panel);
+    } catch(err) {
+      console.error('[NutritionImport]', err);
+      showToast('Import failed: ' + (err && err.message || 'unknown'), 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ===================== NUTRITION & WEIGHT ANALYTICS =====================
+function _isoWeekMonday(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const dow = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dow);
+  return formatDate(d);
+}
+function renderNutritionAnalytics() {
+  const rangeEl = document.getElementById('nut-range'), granEl = document.getElementById('nut-gran');
+  if (!rangeEl || !granEl) return;
+  const range = parseInt(rangeEl.value), gran = granEl.value;
+  const nutLog = getNutritionLog(), bwLog = getBodyweightLog();
+  const today = formatDate(new Date());
+  let cutoff = '0000-00-00';
+  if (range > 0) { const c = new Date(); c.setDate(c.getDate() - range); cutoff = formatDate(c); }
+  const dates = Object.keys(nutLog).filter(d => d >= cutoff && d <= today && nutKcal(nutLog[d]) > 0).sort();
+  const bwDates = Object.keys(bwLog).filter(d => d >= cutoff && d <= today && bwLog[d] > 0).sort();
+  const statsEl = document.getElementById('nut-stats');
+  ['nut-kcal','nut-macros','nut-weight'].forEach(destroyChart);
+
+  if (!dates.length && !bwDates.length) {
+    if (statsEl) statsEl.innerHTML = '<div class="chart-card full-width" style="color:var(--text2);font-size:.85rem;">No nutrition or bodyweight logged in this range yet. Log it in the Coach tab, import a CSV, or wait for the Apple Health feed.</div>';
+    ['chart-nut-kcal','chart-nut-macros','chart-nut-weight'].forEach(showNoData);
+    return;
+  }
+
+  // ---- stats ----
+  const trainDates = new Set(getDoneWorkouts().map(w => w.date));
+  let sumK = 0, sumP = 0, sumC = 0, sumF = 0, tK = 0, tN = 0, rK = 0, rN = 0;
+  dates.forEach(d => {
+    const n = nutLog[d], k = nutKcal(n);
+    sumK += k; sumP += n.protein || 0; sumC += n.carbs || 0; sumF += n.fat || 0;
+    if (trainDates.has(d)) { tK += k; tN++; } else { rK += k; rN++; }
+  });
+  const nD = dates.length || 1;
+  const avgK = Math.round(sumK / nD), avgP = Math.round(sumP / nD), avgC = Math.round(sumC / nD), avgF = Math.round(sumF / nD);
+  const profile = getProfile();
+  const latestBw = bwDates.length ? bwLog[bwDates[bwDates.length - 1]] : (profile && profile.weight) || 0;
+  const gkg = latestBw ? (avgP / latestBw).toFixed(2) : null;
+  const bwChange = bwDates.length >= 2 ? (bwLog[bwDates[bwDates.length - 1]] - bwLog[bwDates[0]]) : null;
+  const tile = (label, value, sub, color) => `<div class="chart-card" style="text-align:center;padding:14px;"><div style="font-size:1.4rem;font-weight:800;color:${color || 'var(--text)'};">${value}</div><div style="font-size:.78rem;color:var(--text2);margin-top:2px;">${label}</div>${sub ? `<div style="font-size:.7rem;color:var(--text2);margin-top:4px;">${sub}</div>` : ''}</div>`;
+  if (statsEl) {
+    let st = '';
+    if (dates.length) {
+      st += tile('Avg calories / day', avgK.toLocaleString() + ' kcal', dates.length + ' day' + (dates.length > 1 ? 's' : '') + ' logged', '#f1c40f');
+      st += tile('Avg protein / day', avgP + ' g', gkg ? gkg + ' g per kg bodyweight' : '', 'var(--blue)');
+      st += tile('Carbs / Fat avg', avgC + ' g / ' + avgF + ' g', '', 'var(--text)');
+      st += tile('Training vs rest days', (tN ? Math.round(tK / tN).toLocaleString() : '—') + ' / ' + (rN ? Math.round(rK / rN).toLocaleString() : '—') + ' kcal', tN + ' training, ' + rN + ' rest', 'var(--green)');
+    }
+    if (bwDates.length) st += tile('Bodyweight', latestBw + ' kg', bwChange !== null ? (bwChange >= 0 ? '+' : '') + bwChange.toFixed(1) + ' kg over range' : bwDates.length + ' entry', 'var(--purple)');
+    statsEl.innerHTML = st;
+  }
+
+  // ---- bucket helper ----
+  const bucketKey = d => gran === 'month' ? d.slice(0, 7) : gran === 'week' ? _isoWeekMonday(d) : d;
+  const bucketLabel = k => gran === 'month' ? k : gran === 'week' ? 'Wk ' + toDMY(k) : toDMY(k);
+  const buckets = {};
+  dates.forEach(d => {
+    const k = bucketKey(d);
+    if (!buckets[k]) buckets[k] = { kcal: 0, p: 0, c: 0, f: 0, n: 0 };
+    const n = nutLog[d]; buckets[k].kcal += nutKcal(n); buckets[k].p += n.protein || 0; buckets[k].c += n.carbs || 0; buckets[k].f += n.fat || 0; buckets[k].n++;
+  });
+  const keys = Object.keys(buckets).sort();
+  const labels = keys.map(bucketLabel);
+  const avgOf = (k, f) => Math.round(buckets[k][f] / buckets[k].n);
+  const baseOpts = () => ({
+    responsive: true,
+    plugins: { legend: { labels: { color: '#eee' } }, tooltip: { enabled: true } },
+    scales: {
+      x: { ticks: { color: '#a0a0b8', maxRotation: 45, autoSkip: true, maxTicksLimit: 16 }, grid: { color: 'rgba(255,255,255,.05)' } },
+      y: { ticks: { color: '#a0a0b8' }, grid: { color: 'rgba(255,255,255,.08)' } }
+    }
+  });
+
+  // ---- calories ----
+  if (dates.length) {
+    const kcalVals = keys.map(k => avgOf(k, 'kcal'));
+    const datasets = [{ type: 'bar', label: gran === 'day' ? 'Calories' : 'Avg calories / day', data: kcalVals, backgroundColor: 'rgba(241,196,15,.55)', borderColor: '#f1c40f', borderWidth: 1, borderRadius: 4, order: 2 }];
+    if (gran === 'day') {
+      // 7-day rolling average over calendar days (gaps count as missing, not zero)
+      const roll = keys.map((k, i) => {
+        const end = new Date(k + 'T12:00:00'); const start = new Date(end); start.setDate(start.getDate() - 6);
+        const sKey = formatDate(start);
+        const win = keys.filter(x => x >= sKey && x <= k);
+        return win.length ? Math.round(win.reduce((a, x) => a + buckets[x].kcal, 0) / win.length) : null;
+      });
+      datasets.push({ type: 'line', label: '7-day average', data: roll, borderColor: '#eaeaea', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: .3, order: 1 });
+    }
+    const o = baseOpts(); o.scales.y.title = { display: true, text: 'kcal', color: '#a0a0b8' };
+    charts['nut-kcal'] = new Chart(document.getElementById('chart-nut-kcal'), { data: { labels, datasets }, options: o });
+  } else showNoData('chart-nut-kcal');
+
+  // ---- macros ----
+  if (dates.length) {
+    const o = baseOpts(); o.scales.x.stacked = true; o.scales.y.stacked = true; o.scales.y.title = { display: true, text: 'grams', color: '#a0a0b8' };
+    charts['nut-macros'] = new Chart(document.getElementById('chart-nut-macros'), {
+      type: 'bar',
+      data: { labels, datasets: [
+        { label: 'Protein (g)', data: keys.map(k => avgOf(k, 'p')), backgroundColor: 'rgba(52,152,219,.75)', borderRadius: 2 },
+        { label: 'Carbs (g)', data: keys.map(k => avgOf(k, 'c')), backgroundColor: 'rgba(46,204,113,.75)', borderRadius: 2 },
+        { label: 'Fat (g)', data: keys.map(k => avgOf(k, 'f')), backgroundColor: 'rgba(230,126,34,.75)', borderRadius: 2 }
+      ] },
+      options: o
+    });
+  } else showNoData('chart-nut-macros');
+
+  // ---- bodyweight ----
+  if (bwDates.length) {
+    const bb = {};
+    bwDates.forEach(d => { const k = bucketKey(d); if (!bb[k]) bb[k] = { s: 0, n: 0 }; bb[k].s += bwLog[d]; bb[k].n++; });
+    const bk = Object.keys(bb).sort();
+    const o = baseOpts(); o.plugins.legend.display = false; o.scales.y.title = { display: true, text: 'kg', color: '#a0a0b8' };
+    charts['nut-weight'] = new Chart(document.getElementById('chart-nut-weight'), {
+      type: 'line',
+      data: { labels: bk.map(bucketLabel), datasets: [{ label: 'Bodyweight (kg)', data: bk.map(k => Math.round(bb[k].s / bb[k].n * 10) / 10), borderColor: '#9b59b6', backgroundColor: 'rgba(155,89,182,.12)', fill: true, tension: .3, pointRadius: 3, borderWidth: 2 }] },
+      options: o
+    });
+  } else showNoData('chart-nut-weight');
+}
+
 // ===================== CHART BUILDERS =====================
 function buildOverloadChart() {
   setTimeout(_buildOverloadChartNow, 60);
@@ -11438,6 +12226,7 @@ window.initCoachTab = function() {
   // Load today's nutrition if exists
   const nut = getNutritionLog()[todayStr()];
   if(nut) {
+    if(document.getElementById('coach-calories')) document.getElementById('coach-calories').value=nut.calories||'';
     if(document.getElementById('coach-protein')) document.getElementById('coach-protein').value=nut.protein||'';
     if(document.getElementById('coach-carbs')) document.getElementById('coach-carbs').value=nut.carbs||'';
     if(document.getElementById('coach-fat')) document.getElementById('coach-fat').value=nut.fat||'';
@@ -11465,14 +12254,17 @@ window.coachSaveProfile = function() {
 };
 
 window.coachSaveNutrition = function() {
+  const kcal = parseInt((document.getElementById('coach-calories')||{}).value)||0;
   const p = parseInt(document.getElementById('coach-protein').value)||0;
   const c = parseInt(document.getElementById('coach-carbs').value)||0;
   const f = parseInt(document.getElementById('coach-fat').value)||0;
   const bw = parseFloat(document.getElementById('coach-daily-bw').value);
   const today = todayStr();
-  if(p||c||f) {
+  if(kcal||p||c||f) {
     const log = getNutritionLog();
-    log[today]={protein:p,carbs:c,fat:f};
+    const entry = {protein:p,carbs:c,fat:f};
+    if(kcal) entry.calories = kcal;
+    log[today]=entry;
     localStorage.setItem('gym_nutrition_log',JSON.stringify(log));
   }
   if(bw) {
