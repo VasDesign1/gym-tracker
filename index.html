@@ -6878,7 +6878,7 @@ function renderChartBodyParts(workouts) {
   charts.bodyparts = new Chart(document.getElementById('chart-bodyparts'), {
     type: 'doughnut',
     data: { labels: labels.map(capitalize), datasets: [{ data: values, backgroundColor: colors, borderColor: 'rgba(0,0,0,.3)', borderWidth: 2 }] },
-    options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: '#eee', font: { size: 12 } } },
+    options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: themeText(), font: { size: 12 } } },
       tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
         const bp = labels[context[0].dataIndex];
         const detail = bpDetails[bp];
