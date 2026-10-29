@@ -473,14 +473,14 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 ::-webkit-scrollbar-thumb:hover{background:var(--highlight2);}
 
 /* Chart Tooltip */
-.chart-tooltip{position:absolute;pointer-events:none;z-index:150;background:rgba(20,20,40,.95);border:1px solid var(--border);border-radius:8px;padding:12px 16px;font-size:.8rem;color:var(--text);min-width:240px;max-width:560px;width:max-content;box-shadow:0 4px 20px rgba(0,0,0,.5);transition:opacity .15s ease, left .1s ease, top .1s ease;font-family:'Segoe UI',system-ui,sans-serif;}
+.chart-tooltip{position:absolute;pointer-events:none;z-index:150;background:var(--card);box-shadow:0 8px 24px rgba(0,0,0,.35);border:1px solid var(--border);border-radius:8px;padding:12px 16px;font-size:.8rem;color:var(--text);min-width:240px;max-width:560px;width:max-content;box-shadow:0 4px 20px rgba(0,0,0,.5);transition:opacity .15s ease, left .1s ease, top .1s ease;font-family:'Segoe UI',system-ui,sans-serif;}
 .chart-tooltip.hidden{opacity:0;}
 .chart-tooltip .tt-title{font-weight:700;font-size:.85rem;color:var(--highlight2);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);}
 .chart-tooltip .tt-label{font-weight:600;color:var(--blue);margin-bottom:2px;}
 .chart-tooltip .tt-body{color:var(--text2);font-size:.78rem;margin-bottom:6px;}
 .chart-tooltip .tt-section{margin-bottom:8px;}
 .chart-tooltip .tt-section:last-child{margin-bottom:0;}
-.chart-tooltip .tt-row{display:flex;justify-content:space-between;gap:16px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04);}
+.chart-tooltip .tt-row{display:flex;justify-content:space-between;gap:16px;padding:2px 0;border-bottom:1px solid var(--border);}
 .chart-tooltip .tt-row:last-child{border-bottom:none;}
 .chart-tooltip .tt-name{color:var(--text);white-space:nowrap;}
 .chart-tooltip .tt-stats{color:var(--text2);white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;}
@@ -686,6 +686,8 @@ html.theme-light .ai-x-body th{background:rgba(0,0,0,.04);}
 html.theme-light .cgp-table td{border-bottom-color:rgba(0,0,0,.06);}
 html.theme-light .modal-overlay{background:rgba(0,0,0,.45);}
 html.theme-light .theme-pop{box-shadow:0 10px 30px rgba(0,0,0,.18);}
+html.theme-light .chart-tooltip{box-shadow:0 8px 24px rgba(0,0,0,.18);}
+html.theme-light [style*="background:rgba(255,255,255,.0"]{background:rgba(0,0,0,.04) !important;}
 html.theme-light [style*="color:#c39bd3"]{color:#7d3c98 !important;}
 html.theme-light [style*="color:#d7b3e6"]{color:#6c3483 !important;}
 html.theme-light [style*="color:#c9c9d8"]{color:#555 !important;}
@@ -1470,13 +1472,13 @@ if (_activeUser === 'FO') {
 // Stored in gym_theme (synced with the rest of the user's data). Applied by setting the CSS variables on <html>.
 var GYM_THEMES = [
   { id: 'midnight',  name: 'Midnight (default)', light: false, vars: { bg: '#0f0f1a', card: '#1a1a2e', card2: '#16213e', accent: '#0f3460', accent2: '#143d73', highlight: '#e94560', highlight2: '#ff6b6b', text: '#eaeaea', text2: '#a0a0b8', border: '#2a2a4a', 'input-bg': '#12122a' } },
-  { id: 'sunrise',   name: 'Sunrise',      light: true, vars: { bg: '#fff4e6', card: '#ffffff', card2: '#ffe8cc', accent: '#ffc78a', accent2: '#ffad5c', highlight: '#f0507a', highlight2: '#ff7a9c', text: '#2b2118', text2: '#8a6d57', border: '#ffd1a3', 'input-bg': '#fffaf3' } },
-  { id: 'citrus',    name: 'Citrus',       light: true, vars: { bg: '#fdfbe6', card: '#ffffff', card2: '#fff7b3', accent: '#ffe77a', accent2: '#ffd93b', highlight: '#2f9e44', highlight2: '#51cf66', text: '#2a2a1a', text2: '#75753f', border: '#f3e58a', 'input-bg': '#fffdf0' } },
-  { id: 'ocean',     name: 'Ocean Breeze', light: true, vars: { bg: '#e6fbff', card: '#ffffff', card2: '#c9f3fb', accent: '#9fe8f7', accent2: '#66d6ee', highlight: '#0b7bd6', highlight2: '#3aa0f0', text: '#0f2a3a', text2: '#4a6b7c', border: '#a6e6f2', 'input-bg': '#f2fcff' } },
-  { id: 'mint',      name: 'Mint',         light: true, vars: { bg: '#ecfdf3', card: '#ffffff', card2: '#cff5df', accent: '#9deebe', accent2: '#6fe0a3', highlight: '#f59e0b', highlight2: '#fbbf24', text: '#12301f', text2: '#4f7a60', border: '#a9ecc5', 'input-bg': '#f4fff8' } },
-  { id: 'bubblegum', name: 'Bubblegum',    light: true, vars: { bg: '#fff0f7', card: '#ffffff', card2: '#ffdbec', accent: '#ffb3d9', accent2: '#ff8fc8', highlight: '#7c3aed', highlight2: '#a78bfa', text: '#3a1b2e', text2: '#8a5a76', border: '#ffc2dd', 'input-bg': '#fff7fb' } },
-  { id: 'lavender',  name: 'Lavender',     light: true, vars: { bg: '#f4f0ff', card: '#ffffff', card2: '#e6ddff', accent: '#cdbfff', accent2: '#b09cff', highlight: '#e0399a', highlight2: '#f472b6', text: '#241a3a', text2: '#6b5a8a', border: '#d4c6ff', 'input-bg': '#faf8ff' } },
-  { id: 'tropical',  name: 'Tropical',     light: true, vars: { bg: '#fff9e8', card: '#ffffff', card2: '#ffe9a8', accent: '#ffd978', accent2: '#ffc83d', highlight: '#e8590c', highlight2: '#ff7a2e', text: '#2d2410', text2: '#7d6a3a', border: '#ffdc8a', 'input-bg': '#fffcf2' } }
+  { id: 'sunrise',   name: 'Sunrise',      light: true, vars: { bg: '#ffc4a0', card: '#fff1e6', card2: '#ffdcc6', accent: '#ffa366', accent2: '#ff8c42', highlight: '#d7266b', highlight2: '#ef5a93', text: '#3a2014', text2: '#7a4a33', border: '#f2ad85', 'input-bg': '#fff8f2' } },
+  { id: 'citrus',    name: 'Citrus',       light: true, vars: { bg: '#f2e46a', card: '#fffbe3', card2: '#f9f0b0', accent: '#f5d92b', accent2: '#e0c200', highlight: '#2b8a3e', highlight2: '#40c057', text: '#2a2612', text2: '#6b6220', border: '#dccb55', 'input-bg': '#fffdf0' } },
+  { id: 'ocean',     name: 'Ocean Breeze', light: true, vars: { bg: '#8fd8ea', card: '#e4f7fb', card2: '#c3eef7', accent: '#5cc8e0', accent2: '#2fb3d1', highlight: '#0b5fa5', highlight2: '#1c7ed6', text: '#0b2533', text2: '#2f5a6b', border: '#7cc9dc', 'input-bg': '#f1fbfd' } },
+  { id: 'mint',      name: 'Mint',         light: true, vars: { bg: '#96e2b6', card: '#e6f9ee', card2: '#c6f0d7', accent: '#5fd090', accent2: '#3cb371', highlight: '#d9480f', highlight2: '#f76707', text: '#10301f', text2: '#356b4a', border: '#7ccf9f', 'input-bg': '#f2fcf6' } },
+  { id: 'bubblegum', name: 'Bubblegum',    light: true, vars: { bg: '#ffadd2', card: '#fff0f6', card2: '#ffd3e6', accent: '#ff80bf', accent2: '#ff5ca8', highlight: '#6741d9', highlight2: '#845ef7', text: '#3b1830', text2: '#7d3f66', border: '#f58fbd', 'input-bg': '#fff6fa' } },
+  { id: 'lavender',  name: 'Lavender',     light: true, vars: { bg: '#c3b2ff', card: '#f2eeff', card2: '#ded4ff', accent: '#a996ff', accent2: '#8b73f5', highlight: '#c2255c', highlight2: '#e64980', text: '#231a3a', text2: '#574679', border: '#a897ea', 'input-bg': '#f8f6ff' } },
+  { id: 'tropical',  name: 'Tropical',     light: true, vars: { bg: '#ffcf5a', card: '#fff5d6', card2: '#ffe7a6', accent: '#ffb627', accent2: '#f59f00', highlight: '#c92a2a', highlight2: '#e03131', text: '#2d2208', text2: '#6e5518', border: '#e8b843', 'input-bg': '#fffaea' } }
 ];
 function getStoredTheme() { try { return JSON.parse(localStorage.getItem('gym_theme') || 'null') || {}; } catch (e) { return {}; } }
 function _lightenHex(hex, amt) {
@@ -1490,6 +1492,7 @@ function applyTheme(id, accent) {
   if (accent && /^#[0-9a-f]{6}$/i.test(accent)) { root.style.setProperty('--highlight', accent); root.style.setProperty('--highlight2', _lightenHex(accent, 0.2)); }
   root.classList.toggle('theme-light', !!t.light);
   root.setAttribute('data-theme', t.id);
+  if (window.Chart && window.Chart.defaults) { try { window.Chart.defaults.color = t.vars.text2; window.Chart.defaults.borderColor = t.light ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.08)'; } catch (e) {} }
   const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t.vars.bg);
   _renderThemePop();
 }
@@ -1500,6 +1503,9 @@ function setTheme(id, accent) {
   if (accent !== undefined) st.accent = accent;
   localStorage.setItem('gym_theme', JSON.stringify(st));   // gym_ key: syncs to the cloud
   applyTheme(st.id || 'midnight', st.accent || '');
+  // charts take their colours when drawn: redraw whatever tab is open
+  const act = document.querySelector('.nav-tab.active');
+  if (act && act.dataset.view && act.dataset.view !== 'log') { try { act.click(); } catch (e) {} }
 }
 function toggleThemePop(ev) {
   if (ev) ev.stopPropagation();
@@ -1933,7 +1939,7 @@ function _gymApplyRemoteData(remoteData, remoteModified) {
   });
   _bypassSet('gym_last_modified', String(remoteModified));
   _bypassSet('gym_seed_imported_v1', '1');
-  if (remoteData.gym_theme !== undefined && typeof applyStoredTheme === 'function') { try { applyStoredTheme(); } catch (e) {} }
+  if (remoteData.gym_theme !== undefined && typeof applyStoredTheme === 'function') { try { applyStoredTheme(); const act = document.querySelector('.nav-tab.active'); if (act && act.dataset.view && act.dataset.view !== 'log') act.click(); } catch (e) {} }
 }
 
 let _snapshotUnsub = null;
@@ -6688,7 +6694,7 @@ function showNoData(canvasId) {
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, rect.width, rect.height);
-  ctx.fillStyle = '#a0a0b8';
+  ctx.fillStyle = themeText2();
   ctx.font = '14px Segoe UI, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('No data available for current filters', rect.width / 2, rect.height / 2);
@@ -6720,7 +6726,7 @@ function renderChartVolume(workouts, exFilter) {
   charts.volume = new Chart(document.getElementById('chart-volume'), {
     type: 'line',
     data: { labels: displayLabelsV, datasets: [{ label: 'Total Volume (kg×reps)', data: values, borderColor: '#e94560', backgroundColor: 'rgba(233,69,96,.15)', fill: true, tension: .3, pointRadius: 4, pointBackgroundColor: '#e94560' }] },
-    options: { ...chartOpts('Volume (kg × reps)'), plugins: { legend: { labels: { color: '#eee' } }, tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
+    options: { ...chartOpts('Volume (kg × reps)'), plugins: { legend: { labels: { color: themeText() } }, tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
       const date = isoMapV[context[0].label] || context[0].label;
       const exVol = volByDateEx[date];
       const meta = dateMeta[date];
@@ -6775,7 +6781,7 @@ function renderChartWeight(workouts, exFilter) {
   charts.weight = new Chart(document.getElementById('chart-weight'), {
     type: 'line',
     data: { labels: displayLabelsW, datasets: [{ label: weightChartLabel, data: values, borderColor: '#3498db', backgroundColor: 'rgba(52,152,219,.15)', fill: true, tension: .3, pointRadius: 3, pointBackgroundColor: '#3498db' }] },
-    options: { ...chartOpts(assistedChart ? 'Assistance (kg) — lower is better' : 'Weight (kg)'), plugins: { legend: { labels: { color: '#eee' } }, tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
+    options: { ...chartOpts(assistedChart ? 'Assistance (kg) — lower is better' : 'Weight (kg)'), plugins: { legend: { labels: { color: themeText() } }, tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
       const date = isoMapW[context[0].label] || context[0].label;
       const exWeights = weightByDateEx[date];
       if (!exWeights) return [];
@@ -6818,7 +6824,7 @@ function renderChartReps(workouts, exFilter) {
   charts.reps = new Chart(document.getElementById('chart-reps'), {
     type: 'bar',
     data: { labels: displayLabelsR, datasets: [{ label: 'Avg Reps per Set', data: values, backgroundColor: 'rgba(46,204,113,.6)', borderColor: '#2ecc71', borderWidth: 1 }] },
-    options: { ...chartOpts('Reps'), plugins: { legend: { labels: { color: '#eee' } }, tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
+    options: { ...chartOpts('Reps'), plugins: { legend: { labels: { color: themeText() } }, tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
       const date = isoMapR[context[0].label] || context[0].label;
       const exReps = repsByDateEx[date];
       if (!exReps) return [];
@@ -6934,7 +6940,7 @@ function renderChartFrequency(workouts) {
   charts.frequency = new Chart(canvas, {
     type: 'bar',
     data: { labels, datasets: [{ label: 'Times Performed', data: values, backgroundColor: 'rgba(155,89,182,.6)', borderColor: '#9b59b6', borderWidth: 1 }] },
-    options: { ...chartOpts('Count'), maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { labels: { color: '#eee' } }, tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
+    options: { ...chartOpts('Count'), maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { labels: { color: themeText() } }, tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
       const name = labelToName[context[0].label] || context[0].label;
       const detail = freqDetails[name];
       if (!detail) return [];
@@ -6984,7 +6990,7 @@ function renderChartWeekly(workouts, exFilter) {
   charts.weekly = new Chart(document.getElementById('chart-weekly'), {
     type: 'bar',
     data: { labels: weekLabels, datasets: [{ label: 'Weekly Volume', data: values, backgroundColor: 'rgba(230,126,34,.6)', borderColor: '#e67e22', borderWidth: 1 }] },
-    options: { ...chartOpts('Volume'), plugins: { legend: { labels: { color: '#eee' } }, tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
+    options: { ...chartOpts('Volume'), plugins: { legend: { labels: { color: themeText() } }, tooltip: { enabled: false, external: externalTooltipHandler, callbacks: { afterBody: function(context) {
       const wkLabel = context[0].label;
       const wk = weekLabelToKey[wkLabel];
       const meta = weekMeta[wk];
@@ -7002,16 +7008,22 @@ function renderChartWeekly(workouts, exFilter) {
   });
 }
 
+// Chart colours read the live theme variables (set by applyTheme) instead of fixed dark-theme hexes.
+function themeVar(n, fb) { try { const v = getComputedStyle(document.documentElement).getPropertyValue(n).trim(); return v || fb; } catch (e) { return fb; } }
+function themeText() { return themeVar('--text', '#eaeaea'); }
+function themeText2() { return themeVar('--text2', '#a0a0b8'); }
+function themeIsLight() { return document.documentElement.classList.contains('theme-light'); }
+function themeGrid(a) { return themeIsLight() ? 'rgba(0,0,0,' + Math.min(0.3, a * 2).toFixed(2) + ')' : 'rgba(255,255,255,' + a + ')'; }
 function chartOpts(yLabel, dateMeta) {
   const opts = {
     responsive: true,
     plugins: {
-      legend: { labels: { color: '#eee' } },
+      legend: { labels: { color: themeText() } },
       tooltip: { enabled: false, external: externalTooltipHandler }
     },
     scales: {
-      x: { ticks: { color: '#a0a0b8', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,.05)' } },
-      y: { ticks: { color: '#a0a0b8' }, grid: { color: 'rgba(255,255,255,.08)' }, title: { display: true, text: yLabel, color: '#a0a0b8' } }
+      x: { ticks: { color: themeText2(), maxRotation: 45 }, grid: { color: themeGrid(.05) } },
+      y: { ticks: { color: themeText2() }, grid: { color: themeGrid(.08) }, title: { display: true, text: yLabel, color: themeText2() } }
     }
   };
   if (dateMeta) {
@@ -12372,10 +12384,10 @@ function renderNutritionAnalytics() {
   const avgOf = (k, f) => Math.round(buckets[k][f] / buckets[k].n);
   const baseOpts = () => ({
     responsive: true,
-    plugins: { legend: { labels: { color: '#eee' } }, tooltip: { enabled: true } },
+    plugins: { legend: { labels: { color: themeText() } }, tooltip: { enabled: true } },
     scales: {
-      x: { ticks: { color: '#a0a0b8', maxRotation: 45, autoSkip: true, maxTicksLimit: 16 }, grid: { color: 'rgba(255,255,255,.05)' } },
-      y: { ticks: { color: '#a0a0b8' }, grid: { color: 'rgba(255,255,255,.08)' } }
+      x: { ticks: { color: themeText2(), maxRotation: 45, autoSkip: true, maxTicksLimit: 16 }, grid: { color: themeGrid(.05) } },
+      y: { ticks: { color: themeText2() }, grid: { color: themeGrid(.08) } }
     }
   });
 
@@ -12391,15 +12403,15 @@ function renderNutritionAnalytics() {
         const win = keys.filter(x => x >= sKey && x <= k);
         return win.length ? Math.round(win.reduce((a, x) => a + buckets[x].kcal, 0) / win.length) : null;
       });
-      datasets.push({ type: 'line', label: '7-day average', data: roll, borderColor: '#eaeaea', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: .3, order: 1 });
+      datasets.push({ type: 'line', label: '7-day average', data: roll, borderColor: themeText(), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: .3, order: 1 });
     }
-    const o = baseOpts(); o.scales.y.title = { display: true, text: 'kcal', color: '#a0a0b8' };
+    const o = baseOpts(); o.scales.y.title = { display: true, text: 'kcal', color: themeText2() };
     charts['nut-kcal'] = new Chart(document.getElementById('chart-nut-kcal'), { data: { labels, datasets }, options: o });
   } else showNoData('chart-nut-kcal');
 
   // ---- macros ----
   if (dates.length) {
-    const o = baseOpts(); o.scales.x.stacked = true; o.scales.y.stacked = true; o.scales.y.title = { display: true, text: 'grams', color: '#a0a0b8' };
+    const o = baseOpts(); o.scales.x.stacked = true; o.scales.y.stacked = true; o.scales.y.title = { display: true, text: 'grams', color: themeText2() };
     charts['nut-macros'] = new Chart(document.getElementById('chart-nut-macros'), {
       type: 'bar',
       data: { labels, datasets: [
@@ -12416,7 +12428,7 @@ function renderNutritionAnalytics() {
     const bb = {};
     bwDates.forEach(d => { const k = bucketKey(d); if (!bb[k]) bb[k] = { s: 0, n: 0 }; bb[k].s += bwLog[d]; bb[k].n++; });
     const bk = Object.keys(bb).sort();
-    const o = baseOpts(); o.plugins.legend.display = false; o.scales.y.title = { display: true, text: 'kg', color: '#a0a0b8' };
+    const o = baseOpts(); o.plugins.legend.display = false; o.scales.y.title = { display: true, text: 'kg', color: themeText2() };
     charts['nut-weight'] = new Chart(document.getElementById('chart-nut-weight'), {
       type: 'line',
       data: { labels: bk.map(bucketLabel), datasets: [{ label: 'Bodyweight (kg)', data: bk.map(k => Math.round(bb[k].s / bb[k].n * 10) / 10), borderColor: '#9b59b6', backgroundColor: 'rgba(155,89,182,.12)', fill: true, tension: .3, pointRadius: 3, borderWidth: 2 }] },
@@ -12455,7 +12467,7 @@ function _buildOverloadChartNow() {
         {label:'Avg Reps',data:hist.map(h=>Math.round(h.avgReps*10)/10),borderColor:'#2ecc71',tension:.3,yAxisID:'y1'}
       ]
     },
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#eaeaea',font:{size:11}}}},scales:{x:{ticks:{color:'#a0a0b8',maxTicksLimit:10}},y:{ticks:{color:'#a0a0b8'},title:{display:true,text:'kg',color:'#a0a0b8'}},y1:{position:'right',ticks:{color:'#2ecc71'},title:{display:true,text:'Reps',color:'#2ecc71'},grid:{drawOnChartArea:false}}}}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:themeText(),font:{size:11}}}},scales:{x:{ticks:{color:themeText2(),maxTicksLimit:10}},y:{ticks:{color:themeText2()},title:{display:true,text:'kg',color:themeText2()}},y1:{position:'right',ticks:{color:'#2ecc71'},title:{display:true,text:'Reps',color:'#2ecc71'},grid:{drawOnChartArea:false}}}}
   });
 }
 
@@ -12474,7 +12486,7 @@ function buildPelotonChart() {
         {label:'Duration (min)',data:c.pelotonHistory.map(r=>r.minutes||0),borderColor:'#e67e22',tension:.3,yAxisID:'y1'}
       ]
     },
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#eaeaea',font:{size:11}}}},scales:{x:{ticks:{color:'#a0a0b8',maxTicksLimit:10}},y:{ticks:{color:'#a0a0b8'},title:{display:true,text:'Watts',color:'#a0a0b8'}},y1:{position:'right',ticks:{color:'#e67e22'},title:{display:true,text:'Minutes',color:'#e67e22'},grid:{drawOnChartArea:false}}}}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:themeText(),font:{size:11}}}},scales:{x:{ticks:{color:themeText2(),maxTicksLimit:10}},y:{ticks:{color:themeText2()},title:{display:true,text:'Watts',color:themeText2()}},y1:{position:'right',ticks:{color:'#e67e22'},title:{display:true,text:'Minutes',color:'#e67e22'},grid:{drawOnChartArea:false}}}}
   });
 }
 
@@ -12491,7 +12503,7 @@ function buildBodyweightChart() {
       labels:dates,
       datasets:[{label:'Bodyweight (kg)',data:dates.map(d=>bwLog[d]),borderColor:'#9b59b6',backgroundColor:'rgba(155,89,182,.1)',fill:true,tension:.3}]
     },
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#eaeaea',font:{size:11}}}},scales:{x:{ticks:{color:'#a0a0b8',maxTicksLimit:10}},y:{ticks:{color:'#a0a0b8'}}}}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:themeText(),font:{size:11}}}},scales:{x:{ticks:{color:themeText2(),maxTicksLimit:10}},y:{ticks:{color:themeText2()}}}}
   });
 }
 
