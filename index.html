@@ -1362,6 +1362,8 @@ window.gymLogout = function() {
 // (Firebase already initialized in auth gate above)
 let _fbDb = _authDb;
 let _fbDocRef = null;
+let _monthsRef = null;   // users/<user>/months  (storage v2: one document per month)
+let _storageV2 = false;  // true once this user's cloud data lives in month documents
 let _syncEnabled = false;
 let _syncTimer = null;
 let _syncStatus = 'idle';
@@ -1370,6 +1372,7 @@ let _initialPullDone = false;
 try {
   if (_fbDb) {
     _fbDocRef = _fbDb.collection('users').doc(_activeUser);
+    _monthsRef = _fbDocRef.collection('months');
     _syncEnabled = true;
   }
 } catch(e) { console.error('[Sync] Firestore ref failed:', e); }
@@ -1404,6 +1407,10 @@ let _lastPushedModified = 0;
 function gymPushToCloud(opts) {
   if (!_syncEnabled || !_fbDocRef) return Promise.resolve(false);
   if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
+  if (_storageV2) return _gymPushV2(opts);
+  return _gymPushLegacy(opts);
+}
+function _gymPushLegacy(opts) {
   gymSyncStatus('syncing');
 
   // MERGE-ON-PUSH: union local+cloud workouts by id, then push merged.
@@ -1464,6 +1471,18 @@ function gymPullFromCloud() {
   gymSyncStatus('pulling');
   return _fbDocRef.get()
     .then(doc => {
+      // Storage v2: month documents are the source of truth for workouts.
+      if (doc.exists && ((doc.data() || {}).storageVersion || 0) >= 2) {
+        _storageV2 = true;
+        return _gymPullV2(doc);
+      }
+      return _gymPullLegacy(doc).then(updated => _gymMigrateToV2().then(() => updated));
+    })
+    .catch(e => { console.error('[Sync] Pull failed:',e); gymSyncStatus('offline'); _initialPullDone = true; return false; });
+}
+function _gymPullLegacy(doc) {
+  return Promise.resolve(doc)
+    .then(doc => {
       if (!doc.exists) {
         // No remote data - push current local
         gymSyncStatus('idle');
@@ -1516,6 +1535,183 @@ function gymPushNow(opts) {
   return gymPushToCloud(opts);
 }
 
+// ===================== STORAGE V2: ONE CLOUD DOCUMENT PER MONTH =====================
+// users/<user>/months/<YYYY-MM> = { workouts: '<json array incl. tombstones>', lastModified, user, month }
+// users/<user>              = { data: { other gym_* keys }, storageVersion: 2, lastModified, ... }
+// The pre-migration main document (with data.gym_workouts) is left in place as a frozen backup.
+// Only months whose content hash changed since the last push are re-sent; each push merges
+// per-id with the cloud copy of that month first (same mergeWorkouts + tombstones as before).
+const _MONTH_HASH_KEY = 'sync_month_hash_' + _activeUser; // non-gym_ key: local only, never synced
+let _monthHashes = {};
+let _monthTs = {};      // month -> lastModified we wrote (suppresses our own snapshot echo)
+let _mainHash = '';
+try { const h = JSON.parse(localStorage.getItem(_MONTH_HASH_KEY) || '{}'); _monthHashes = h.months || {}; _mainHash = h.main || ''; } catch(e) {}
+function _saveMonthHashes() { try { localStorage.setItem(_MONTH_HASH_KEY, JSON.stringify({ months: _monthHashes, main: _mainHash })); } catch(e) {} }
+function _monthOf(w) { return (w && w.date ? String(w.date) : '0000-00').slice(0, 7); }
+function _groupByMonth(raw) { const g = {}; (raw || []).forEach(w => { const k = _monthOf(w); (g[k] = g[k] || []).push(w); }); return g; }
+function _hashStr(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + ':' + str.length; }
+function _replaceMonthLocally(month, arr) {
+  const rest = _rawGetWorkouts().filter(w => _monthOf(w) !== month);
+  _origAuthSet('gym_workouts', JSON.stringify(rest.concat(arr)));
+  if (typeof invalidateTooltipCache === 'function') invalidateTooltipCache();
+}
+function _otherKeysJson() { const d = gymCollectAllUserKeys(); delete d.gym_workouts; return d; }
+function _mergeMonthFromRemote(month, remoteArr) {
+  // merge a remote month into local; returns true if local changed
+  const localArr = _groupByMonth(_rawGetWorkouts())[month] || [];
+  const merged = mergeWorkouts(localArr, remoteArr);
+  const mj = JSON.stringify(merged);
+  const changed = mj !== JSON.stringify(localArr);
+  if (changed) _replaceMonthLocally(month, merged);
+  // if local had extra edits the cloud lacks, leave the month dirty so the next push uploads it
+  _monthHashes[month] = (mj === JSON.stringify(remoteArr)) ? _hashStr(mj) : 'dirty';
+  return changed;
+}
+function _dirtyMonths(groups) { return Object.keys(groups).filter(m => _hashStr(JSON.stringify(groups[m])) !== _monthHashes[m]); }
+function _gymPushV2(opts) {
+  if (!_monthsRef) return Promise.resolve(false);
+  gymSyncStatus('syncing');
+  const localRaw = _rawGetWorkouts();
+  const groups = _groupByMonth(localRaw);
+  const dirty = _dirtyMonths(groups);
+  const ts = Date.now();
+  let localChanged = false;
+  const localActive = localRaw.filter(w => !w.deleted).length;
+  // Shrinkage guard (same intent as the legacy one): local looks wiped but the cloud has data -> pull instead.
+  const guard = (localActive === 0 && !(opts && opts.force))
+    ? _monthsRef.get({ source: 'server' }).then(snap => {
+        let remoteActive = 0;
+        snap.forEach(d => { try { remoteActive += JSON.parse(d.data().workouts || '[]').filter(w => !w.deleted).length; } catch(e) {} });
+        if (remoteActive > 5) {
+          console.error('[Sync] ABORT push: local has 0 active workouts but cloud has', remoteActive, '. Pulling cloud instead.');
+          snap.forEach(d => { try { _mergeMonthFromRemote(d.id, JSON.parse(d.data().workouts || '[]')); } catch(e) {} });
+          _saveMonthHashes(); _gymRerenderActiveView();
+          if (typeof showToast === 'function') showToast('⚠ Push aborted — local appears empty. Pulled cloud instead.', 'error');
+          return false;
+        }
+        return true;
+      })
+    : Promise.resolve(true);
+  return guard.then(okToPush => {
+    if (!okToPush) { gymSyncStatus('idle'); return false; }
+    const tasks = dirty.map(m => _monthsRef.doc(m).get({ source: 'server' }).then(doc => {
+      let remoteArr = [];
+      if (doc && doc.exists) { try { remoteArr = JSON.parse((doc.data() || {}).workouts || '[]'); } catch(e) {} }
+      const merged = mergeWorkouts(groups[m], remoteArr);
+      const mj = JSON.stringify(merged);
+      if (mj !== JSON.stringify(groups[m])) { _replaceMonthLocally(m, merged); localChanged = true; }
+      _monthTs[m] = ts;
+      return _monthsRef.doc(m).set({ workouts: mj, lastModified: ts, user: _activeUser, month: m }).then(() => { _monthHashes[m] = _hashStr(mj); });
+    }));
+    const other = _otherKeysJson();
+    const otherJson = JSON.stringify(other);
+    const mainDirty = _hashStr(otherJson) !== _mainHash;
+    if (mainDirty) {
+      tasks.push(_fbDocRef.set({ data: other, lastModified: ts, user: _activeUser, storageVersion: 2 }, { merge: true }).then(() => { _mainHash = _hashStr(otherJson); }));
+    }
+    return Promise.all(tasks).then(() => {
+      _saveMonthHashes();
+      _origAuthSet('gym_last_modified', String(ts));
+      if (mainDirty) _lastPushedModified = ts;
+      if (localChanged) _gymRerenderActiveView();
+      gymSyncStatus('idle');
+      console.log('[Sync v2] pushed', dirty.length, 'month(s)' + (mainDirty ? ' + profile/logs' : ''));
+      return true;
+    });
+  }).catch(e => { console.error('[Sync v2] Push failed:', e); gymSyncStatus('error'); return false; });
+}
+function _gymPullV2(mainDoc) {
+  return _monthsRef.get().then(snap => {
+    let changed = false;
+    snap.forEach(d => { try { if (_mergeMonthFromRemote(d.id, JSON.parse((d.data() || {}).workouts || '[]'))) changed = true; } catch(e) { console.error('[Sync v2] bad month doc', d.id, e); } });
+    _saveMonthHashes();
+    // other keys (profile, nutrition, bodyweight, scoring) from the main doc: remote wins, as before
+    const remote = mainDoc && mainDoc.exists ? (mainDoc.data() || {}) : {};
+    const rd = Object.assign({}, remote.data || {}); delete rd.gym_workouts;
+    if (Object.keys(rd).length) _gymApplyRemoteData(rd, remote.lastModified || 0);
+    _mainHash = _hashStr(JSON.stringify(_otherKeysJson()));
+    _lastPushedModified = remote.lastModified || 0;
+    _initialPullDone = true;
+    gymSyncStatus('idle');
+    gymStartMonthsListener();
+    // anything local the cloud lacks (new months, local-only edits) goes up now
+    if (_dirtyMonths(_groupByMonth(_rawGetWorkouts())).length) gymSchedulePush();
+    return changed;
+  });
+}
+function _downloadWorkoutsBackup(raw, label) {
+  try {
+    if (!window.matchMedia || !window.matchMedia('(hover:hover)').matches) return false; // desktop only; phones would open the file instead of saving it
+    const blob = new Blob([JSON.stringify(raw, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'gym-tracker-backup-' + label + '-' + formatDate(new Date()) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    return true;
+  } catch(e) { console.warn('[Sync v2] backup download skipped:', e); return false; }
+}
+// One-time migration: legacy single document -> month documents. Runs after a successful legacy
+// pull (so local == merged cloud). If the rules do not allow the months sub-collection yet, it
+// logs and leaves everything on the legacy path; it retries on the next load.
+function _gymMigrateToV2() {
+  if (!_syncEnabled || !_monthsRef || _storageV2) return Promise.resolve(false);
+  return _monthsRef.limit(1).get({ source: 'server' }).then(() => {
+    const raw = _rawGetWorkouts();
+    const groups = _groupByMonth(raw);
+    const months = Object.keys(groups).sort();
+    const ts = Date.now();
+    const saved = _downloadWorkoutsBackup(raw, 'before-monthly');
+    return Promise.all(months.map(m => {
+      const j = JSON.stringify(groups[m]);
+      _monthTs[m] = ts;
+      return _monthsRef.doc(m).set({ workouts: j, lastModified: ts, user: _activeUser, month: m }).then(() => { _monthHashes[m] = _hashStr(j); });
+    })).then(() => {
+      const other = _otherKeysJson();
+      return _fbDocRef.set({ data: other, storageVersion: 2, migratedAt: ts, lastModified: ts, user: _activeUser }, { merge: true })
+        .then(() => { _mainHash = _hashStr(JSON.stringify(other)); });
+    }).then(() => {
+      _saveMonthHashes();
+      _storageV2 = true;
+      _lastPushedModified = ts;
+      _origAuthSet('gym_last_modified', String(ts));
+      gymStartMonthsListener();
+      console.log('[Sync v2] migrated', months.length, 'month(s) to per-month documents');
+      if (typeof showToast === 'function') showToast('✓ Cloud storage switched to one document per month (' + months.length + ' months). Old document kept as backup' + (saved ? ', JSON backup downloaded.' : '.'), 'success');
+      return true;
+    });
+  }).catch(e => {
+    if (e && (e.code === 'permission-denied' || /permission/i.test(String(e.message || '')))) {
+      console.warn('[Sync v2] months sub-collection not allowed by Firestore rules yet — staying on the single document.');
+    } else {
+      console.error('[Sync v2] migration failed, staying on the single document:', e);
+    }
+    return false;
+  });
+}
+let _monthsUnsub = null;
+function gymStartMonthsListener() {
+  if (!_syncEnabled || !_monthsRef || _monthsUnsub) return;
+  try {
+    _monthsUnsub = _monthsRef.onSnapshot(function(snap) {
+      if (!snap || (snap.metadata && snap.metadata.fromCache)) return;
+      let changed = false;
+      snap.docChanges().forEach(ch => {
+        if (ch.type === 'removed') return;
+        const d = ch.doc; const data = d.data() || {};
+        if (data.lastModified && data.lastModified === _monthTs[d.id]) return; // our own write echoing back
+        try { if (_mergeMonthFromRemote(d.id, JSON.parse(data.workouts || '[]'))) changed = true; } catch(e) {}
+      });
+      if (changed) {
+        _saveMonthHashes();
+        console.log('[Sync v2] remote month change applied');
+        _gymRerenderActiveView();
+        if (typeof showToast === 'function') showToast('↻ Updated from another device', 'info');
+      }
+    }, function(err) { console.error('[Sync v2] months onSnapshot error:', err); });
+  } catch(e) { console.error('[Sync v2] failed to start months listener:', e); }
+}
+
 // ----- Real-time cloud listener (so the OTHER device updates without a refresh) -----
 // When a Firestore document changes, every client subscribed via onSnapshot is
 // notified within ~1 second. We use this to auto-pull remote changes pushed
@@ -1536,6 +1732,10 @@ function _gymApplyRemoteData(remoteData, remoteModified) {
   // MERGE for gym_workouts (per-id, additive). Other keys take remote
   // (last-writer-wins for settings/profile/logs).
   const _bypassSet = _origAuthSet;
+  if (_storageV2 && remoteData.gym_workouts !== undefined) {
+    // The main document keeps the pre-migration blob as a frozen backup; ignore it.
+    remoteData = Object.assign({}, remoteData); delete remoteData.gym_workouts;
+  }
   if (remoteData.gym_workouts !== undefined) {
     let remoteRaw = [];
     try { remoteRaw = JSON.parse(remoteData.gym_workouts || '[]'); } catch(e) {}
@@ -12483,6 +12683,10 @@ window.adminDelete = async function(userId) {
   if (!confirm(msg)) return;
   try {
     await firebase.firestore().collection('approvals').doc(userId).delete();
+    try {
+      const monthsSnap = await firebase.firestore().collection('users').doc(userId).collection('months').get();
+      await Promise.all(monthsSnap.docs.map(d => d.ref.delete()));
+    } catch(e){}
     try { await firebase.firestore().collection('users').doc(userId).delete(); } catch(e){}
     showToast('User ' + userId + ' deleted from Firestore');
     adminRefresh();
