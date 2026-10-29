@@ -19,7 +19,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
-:root{--bg:#0f0f1a;--card:#1a1a2e;--card2:#16213e;--accent:#0f3460;--highlight:#e94560;--highlight2:#ff6b6b;--green:#2ecc71;--blue:#3498db;--purple:#9b59b6;--orange:#e67e22;--text:#eaeaea;--text2:#a0a0b8;--border:#2a2a4a;--input-bg:#12122a;--radius:10px;}
+:root{--bg:#0f0f1a;--card:#1a1a2e;--card2:#16213e;--accent:#0f3460;--highlight:#e94560;--highlight2:#ff6b6b;--green:#2ecc71;--blue:#3498db;--purple:#9b59b6;--orange:#e67e22;--text:#eaeaea;--text2:#a0a0b8;--border:#2a2a4a;--input-bg:#12122a;--accent2:#143d73;--radius:10px;}
 body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
 .nav{background:var(--card);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;position:sticky;top:0;z-index:100;}
 .nav-brand{font-size:1.3rem;font-weight:700;color:var(--highlight);padding:15px 20px 15px 0;letter-spacing:-0.5px;}
@@ -51,7 +51,7 @@ select{min-width:140px;cursor:pointer;}
 .btn-primary{background:var(--highlight);color:#fff;}
 .btn-primary:hover{background:var(--highlight2);}
 .btn-secondary{background:var(--accent);color:var(--text);}
-.btn-secondary:hover{background:#143d73;}
+.btn-secondary:hover{background:var(--accent2);}
 .btn-sm{padding:6px 14px;font-size:.8rem;}
 .btn-danger{background:#c0392b;color:#fff;}
 .btn-danger:hover{background:#e74c3c;}
@@ -134,7 +134,7 @@ select{min-width:140px;cursor:pointer;}
 input[type=checkbox].set-check{width:20px;height:20px;accent-color:var(--highlight);}
 
 /* Peloton Card */
-.peloton-card{background:linear-gradient(135deg,#1a1a2e,#0f3460);border:2px solid var(--blue);}
+.peloton-card{background:linear-gradient(135deg,var(--card),var(--accent));border:2px solid var(--blue);}
 .toggle-row{display:flex;align-items:center;gap:12px;margin-bottom:12px;}
 .toggle{position:relative;width:48px;height:26px;cursor:pointer;}
 .toggle input{display:none;}
@@ -209,7 +209,7 @@ input[type=checkbox].set-check{width:20px;height:20px;accent-color:var(--highlig
 .cal-edit-ctrl{display:none !important;}
 #cal-workout-detail.editing .cal-edit-ctrl{display:inline-flex !important;}
 .cal-edit-toggle{background:var(--accent);border:none;color:var(--text);cursor:pointer;font-size:.75rem;font-weight:600;padding:3px 10px;border-radius:6px;transition:all .2s;margin-left:10px;}
-.cal-edit-toggle:hover{background:#143d73;}
+.cal-edit-toggle:hover{background:var(--accent2);}
 .cal-edit-toggle.active{background:var(--highlight);color:#fff;}
 .cal-view-toggle{display:flex;gap:4px;margin-left:12px;}
 .cal-view-btn{padding:5px 14px;border:1px solid var(--border);border-radius:6px;background:var(--card2);color:var(--text2);cursor:pointer;font-size:.8rem;font-weight:600;transition:all .2s;}
@@ -615,7 +615,7 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 .coach-tag.blue{background:rgba(52,152,219,.2);color:var(--blue);}
 .coach-tag.purple{background:rgba(155,89,182,.2);color:var(--purple);}
 .coach-tag.gold{background:rgba(241,196,15,.2);color:#f1c40f;}
-.pr-card{background:linear-gradient(135deg,#1a1a2e,#2c1810);border:1px solid #f1c40f;border-radius:8px;padding:14px;margin-bottom:10px;}
+.pr-card{background:linear-gradient(135deg,var(--card),var(--card2));border:1px solid #f1c40f;border-radius:8px;padding:14px;margin-bottom:10px;}
 .pr-card .pr-exercise{font-weight:700;color:#f1c40f;font-size:.95rem;margin-bottom:6px;}
 .pr-card .pr-detail{font-size:.85rem;color:var(--text);margin-bottom:2px;}
 .coach-section{margin-bottom:24px;}
@@ -665,6 +665,33 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
 .cgp-ex-name{font-weight:700;color:var(--highlight2);font-size:.78rem;margin-bottom:2px;}
 .cgp-ex-sets{font-size:.68rem;color:var(--text2);margin-bottom:2px;}
 .cgp-ex-pt{font-size:.72rem;padding-left:6px;}
+/* ---- colour themes (FO picks in the 🎨 popover; light themes get a few contrast fixes) ---- */
+.theme-btn{background:var(--accent);border:none;color:var(--text);cursor:pointer;font-size:.95rem;padding:5px 9px;border-radius:6px;margin-left:8px;line-height:1;}
+.theme-btn:hover{background:var(--highlight);}
+.theme-pop{position:absolute;top:54px;right:16px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;z-index:150;width:290px;box-shadow:0 10px 30px rgba(0,0,0,.35);display:none;}
+.theme-pop.open{display:block;}
+.theme-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:8px;cursor:pointer;border:2px solid transparent;}
+.theme-row:hover{background:var(--card2);}
+.theme-row.selected{border-color:var(--highlight);}
+.theme-dots{display:flex;gap:3px;}
+.theme-dots span{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.2);display:inline-block;}
+.theme-name{font-size:.85rem;font-weight:600;flex:1;}
+html.theme-light .ai-x-head:hover{background:rgba(0,0,0,.03);}
+html.theme-light .ai-x-body code{background:rgba(0,0,0,.06);}
+html.theme-light .ai-x-body th{background:rgba(0,0,0,.04);}
+html.theme-light .cgp-table td{border-bottom-color:rgba(0,0,0,.06);}
+html.theme-light .modal-overlay{background:rgba(0,0,0,.45);}
+html.theme-light .theme-pop{box-shadow:0 10px 30px rgba(0,0,0,.18);}
+html.theme-light [style*="color:#c39bd3"]{color:#7d3c98 !important;}
+html.theme-light [style*="color:#d7b3e6"]{color:#6c3483 !important;}
+html.theme-light [style*="color:#c9c9d8"]{color:#555 !important;}
+html.theme-light [style*="color:#bdc3c7"]{color:#666 !important;}
+html.theme-light [style*="color:#7fd3e8"]{color:#0e7490 !important;}
+html.theme-light [style*="color:#f1c40f"]{color:#b7950b !important;}
+html.theme-light [style*="color:#ff6b6b"]{color:#c0392b !important;}
+html.theme-light [style*="color:#e74c3c"]{color:#c0392b !important;}
+html.theme-light .nav{box-shadow:0 2px 10px rgba(0,0,0,.06);}
+html.theme-light .card{box-shadow:0 2px 8px rgba(0,0,0,.05);}
 </style>
 </head>
 <body>
@@ -683,6 +710,8 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
   <span class="gym-user-badge" id="gym-user-badge"></span>
   <span id="gym-sync-status" style="font-size:.7rem;color:var(--text2);margin-left:8px;cursor:pointer;" onclick="gymForceSync()" title="Click to force sync">☁ Synced v3</span>
   <button class="gym-logout-btn" onclick="gymLogout()">Logout</button>
+  <button class="theme-btn" id="gym-theme-btn" style="display:none;" onclick="toggleThemePop(event)" title="Colour theme">🎨</button>
+  <div class="theme-pop" id="theme-pop"></div>
 </nav>
 
 <div class="container">
@@ -1429,6 +1458,68 @@ if (_activeUser === 'FO') {
   };
 })();
 
+// ===================== COLOUR THEMES =====================
+// Stored in gym_theme (synced with the rest of the user's data). Applied by setting the CSS variables on <html>.
+var GYM_THEMES = [
+  { id: 'midnight',  name: 'Midnight (default)', light: false, vars: { bg: '#0f0f1a', card: '#1a1a2e', card2: '#16213e', accent: '#0f3460', accent2: '#143d73', highlight: '#e94560', highlight2: '#ff6b6b', text: '#eaeaea', text2: '#a0a0b8', border: '#2a2a4a', 'input-bg': '#12122a' } },
+  { id: 'sunrise',   name: 'Sunrise',      light: true, vars: { bg: '#fff4e6', card: '#ffffff', card2: '#ffe8cc', accent: '#ffc78a', accent2: '#ffad5c', highlight: '#f0507a', highlight2: '#ff7a9c', text: '#2b2118', text2: '#8a6d57', border: '#ffd1a3', 'input-bg': '#fffaf3' } },
+  { id: 'citrus',    name: 'Citrus',       light: true, vars: { bg: '#fdfbe6', card: '#ffffff', card2: '#fff7b3', accent: '#ffe77a', accent2: '#ffd93b', highlight: '#2f9e44', highlight2: '#51cf66', text: '#2a2a1a', text2: '#75753f', border: '#f3e58a', 'input-bg': '#fffdf0' } },
+  { id: 'ocean',     name: 'Ocean Breeze', light: true, vars: { bg: '#e6fbff', card: '#ffffff', card2: '#c9f3fb', accent: '#9fe8f7', accent2: '#66d6ee', highlight: '#0b7bd6', highlight2: '#3aa0f0', text: '#0f2a3a', text2: '#4a6b7c', border: '#a6e6f2', 'input-bg': '#f2fcff' } },
+  { id: 'mint',      name: 'Mint',         light: true, vars: { bg: '#ecfdf3', card: '#ffffff', card2: '#cff5df', accent: '#9deebe', accent2: '#6fe0a3', highlight: '#f59e0b', highlight2: '#fbbf24', text: '#12301f', text2: '#4f7a60', border: '#a9ecc5', 'input-bg': '#f4fff8' } },
+  { id: 'bubblegum', name: 'Bubblegum',    light: true, vars: { bg: '#fff0f7', card: '#ffffff', card2: '#ffdbec', accent: '#ffb3d9', accent2: '#ff8fc8', highlight: '#7c3aed', highlight2: '#a78bfa', text: '#3a1b2e', text2: '#8a5a76', border: '#ffc2dd', 'input-bg': '#fff7fb' } },
+  { id: 'lavender',  name: 'Lavender',     light: true, vars: { bg: '#f4f0ff', card: '#ffffff', card2: '#e6ddff', accent: '#cdbfff', accent2: '#b09cff', highlight: '#e0399a', highlight2: '#f472b6', text: '#241a3a', text2: '#6b5a8a', border: '#d4c6ff', 'input-bg': '#faf8ff' } },
+  { id: 'tropical',  name: 'Tropical',     light: true, vars: { bg: '#fff9e8', card: '#ffffff', card2: '#ffe9a8', accent: '#ffd978', accent2: '#ffc83d', highlight: '#e8590c', highlight2: '#ff7a2e', text: '#2d2410', text2: '#7d6a3a', border: '#ffdc8a', 'input-bg': '#fffcf2' } }
+];
+function getStoredTheme() { try { return JSON.parse(localStorage.getItem('gym_theme') || 'null') || {}; } catch (e) { return {}; } }
+function _lightenHex(hex, amt) {
+  const n = parseInt(hex.slice(1), 16); const ch = [n >> 16, (n >> 8) & 255, n & 255].map(x => Math.round(x + (255 - x) * amt));
+  return '#' + ch.map(x => x.toString(16).padStart(2, '0')).join('');
+}
+function applyTheme(id, accent) {
+  const t = GYM_THEMES.find(x => x.id === id) || GYM_THEMES[0];
+  const root = document.documentElement;
+  Object.entries(t.vars).forEach(([k, v]) => root.style.setProperty('--' + k, v));
+  if (accent && /^#[0-9a-f]{6}$/i.test(accent)) { root.style.setProperty('--highlight', accent); root.style.setProperty('--highlight2', _lightenHex(accent, 0.2)); }
+  root.classList.toggle('theme-light', !!t.light);
+  root.setAttribute('data-theme', t.id);
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t.vars.bg);
+  _renderThemePop();
+}
+function applyStoredTheme() { const st = getStoredTheme(); applyTheme(st.id || 'midnight', st.accent || ''); }
+function setTheme(id, accent) {
+  const st = getStoredTheme();
+  if (id !== undefined) st.id = id;
+  if (accent !== undefined) st.accent = accent;
+  localStorage.setItem('gym_theme', JSON.stringify(st));   // gym_ key: syncs to the cloud
+  applyTheme(st.id || 'midnight', st.accent || '');
+}
+function toggleThemePop(ev) {
+  if (ev) ev.stopPropagation();
+  const p = document.getElementById('theme-pop'); if (!p) return;
+  p.classList.toggle('open'); _renderThemePop();
+}
+function _renderThemePop() {
+  const p = document.getElementById('theme-pop'); if (!p || !p.classList.contains('open')) return;
+  const st = getStoredTheme(); const cur = st.id || 'midnight';
+  const curT = GYM_THEMES.find(t => t.id === cur) || GYM_THEMES[0];
+  let h = '<div style="font-size:.78rem;color:var(--text2);margin-bottom:6px;">Colour theme</div>';
+  GYM_THEMES.forEach(t => {
+    h += '<div class="theme-row' + (t.id === cur ? ' selected' : '') + '" onclick="setTheme(\'' + t.id + '\')">'
+      + '<div class="theme-dots"><span style="background:' + t.vars.bg + '"></span><span style="background:' + t.vars.card2 + '"></span><span style="background:' + t.vars.accent + '"></span><span style="background:' + t.vars.highlight + '"></span></div>'
+      + '<span class="theme-name">' + t.name + '</span></div>';
+  });
+  h += '<div style="display:flex;align-items:center;gap:10px;margin-top:10px;font-size:.78rem;color:var(--text2);">'
+    + '<label>Accent <input type="color" id="theme-accent" value="' + (st.accent || curT.vars.highlight) + '" onchange="setTheme(undefined,this.value)" style="width:40px;height:26px;border:none;background:none;padding:0;cursor:pointer;vertical-align:middle;margin-left:4px;"></label>'
+    + '<a onclick="setTheme(undefined,\'\')" style="cursor:pointer;text-decoration:underline;">reset accent</a></div>';
+  p.innerHTML = h;
+}
+document.addEventListener('click', function (e) {
+  const p = document.getElementById('theme-pop'); if (!p || !p.classList.contains('open')) return;
+  if (p.contains(e.target)) return;
+  p.classList.remove('open');
+});
+try { applyStoredTheme(); } catch (e) {}
+
 window.gymCurrentUser = _activeUser;
 window.gymLogout = function() {
   if (confirm('Log out of ' + _activeUser + '?\n\nYour data is saved in the cloud and will be available next time you log in.')) {
@@ -1834,6 +1925,7 @@ function _gymApplyRemoteData(remoteData, remoteModified) {
   });
   _bypassSet('gym_last_modified', String(remoteModified));
   _bypassSet('gym_seed_imported_v1', '1');
+  if (remoteData.gym_theme !== undefined && typeof applyStoredTheme === 'function') { try { applyStoredTheme(); } catch (e) {} }
 }
 
 let _snapshotUnsub = null;
@@ -3117,6 +3209,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (adminTab) adminTab.style.display = '';
     const aiTab = document.getElementById('nav-ai');
     if (aiTab) aiTab.style.display = '';
+    const themeBtn = document.getElementById('gym-theme-btn');
+    if (themeBtn) themeBtn.style.display = '';
   }
   // Wait for Firebase Auth state to restore before pulling (rules require auth)
   function _doInitialPull() {
