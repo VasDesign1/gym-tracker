@@ -60,18 +60,30 @@ select{min-width:140px;cursor:pointer;}
 
 /* Body Part Chips */
 .chip-group{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;}
-.ai-chat{display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow:auto;margin-bottom:12px;}
-.ai-msg{padding:10px 14px;border-radius:12px;max-width:94%;font-size:.9rem;line-height:1.5;word-wrap:break-word;}
-.ai-msg.user{align-self:flex-end;background:var(--highlight);color:#fff;white-space:pre-wrap;}
-.ai-msg.ai{align-self:flex-start;background:var(--card2);border:1px solid var(--border);}
-.ai-msg.ai h4{margin:10px 0 4px;font-size:.92rem;color:var(--text);}
-.ai-msg.ai ul,.ai-msg.ai ol{margin:4px 0 6px 20px;padding:0;}
-.ai-msg.ai li{margin:2px 0;}
-.ai-msg.ai p{margin:6px 0;}
-.ai-msg.ai code{background:rgba(255,255,255,.08);padding:1px 4px;border-radius:4px;font-size:.85em;}
-.ai-msg.ai.streaming::after{content:"▍";animation:aiblink 1s steps(2) infinite;}
+.ai-chat{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+.ai-x{border:1px solid var(--border);border-radius:10px;background:var(--card2);overflow:hidden;}
+.ai-x-head{display:flex;gap:10px;align-items:center;padding:10px 12px;cursor:pointer;user-select:none;}
+.ai-x-head:hover{background:rgba(255,255,255,.03);}
+.ai-x-q{flex:1;font-weight:600;font-size:.88rem;line-height:1.35;}
+.ai-x-meta{font-size:.68rem;color:var(--text2);white-space:nowrap;}
+.ai-x-chev{font-size:.8rem;color:var(--text2);transition:transform .2s;}
+.ai-x.open .ai-x-chev{transform:rotate(180deg);}
+.ai-x-body{display:none;padding:4px 14px 12px;border-top:1px solid var(--border);font-size:.88rem;line-height:1.5;word-wrap:break-word;}
+.ai-x.open .ai-x-body{display:block;}
+.ai-x-body h4{margin:12px 0 4px;font-size:.9rem;color:var(--text);}
+.ai-x-body ul,.ai-x-body ol{margin:4px 0 8px 20px;padding:0;}
+.ai-x-body li{margin:3px 0;}
+.ai-x-body p{margin:7px 0;}
+.ai-x-body code{background:rgba(255,255,255,.08);padding:1px 4px;border-radius:4px;font-size:.85em;}
+.ai-x-body table{border-collapse:collapse;margin:8px 0;font-size:.82rem;max-width:100%;}
+.ai-x-body th,.ai-x-body td{border:1px solid var(--border);padding:4px 8px;text-align:left;vertical-align:top;}
+.ai-x-body th{background:rgba(255,255,255,.05);font-weight:600;}
+.ai-x-body .ai-tablewrap{overflow-x:auto;}
+.ai-x.streaming .ai-x-body::after{content:"▍";animation:aiblink 1s steps(2) infinite;}
 @keyframes aiblink{to{opacity:0;}}
-.ai-meta{font-size:.68rem;color:var(--text2);margin-top:6px;}
+.ai-x-foot{font-size:.68rem;color:var(--text2);margin-top:10px;padding-top:6px;border-top:1px dashed var(--border);}
+.ai-chat-tools{display:flex;gap:8px;align-items:center;margin-top:14px;font-size:.75rem;color:var(--text2);}
+.ai-chat-tools a{color:var(--text2);cursor:pointer;text-decoration:underline;}
 #ai-q,#ai-notes{width:100%;box-sizing:border-box;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font:inherit;font-size:.9rem;resize:vertical;}
 .ai-suggest{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
 .ai-suggest .chip{padding:6px 12px;font-size:.75rem;font-weight:500;}
@@ -1019,7 +1031,6 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
     </div>
     <div class="card">
       <h3>Ask the coach</h3>
-      <div id="ai-chat" class="ai-chat"></div>
       <div class="ai-suggest" id="ai-suggest">
         <div class="chip" onclick="aiSuggest(this)">How does my routine compare with strength standards for my age and weight?</div>
         <div class="chip" onclick="aiSuggest(this)">Which exercises have stalled in the last 8 weeks and what should I change?</div>
@@ -1037,6 +1048,8 @@ input,select,textarea{font-size:16px !important;} /* Prevent iOS zoom on focus *
         <span id="ai-status" style="font-size:.8rem;color:var(--text2);"></span>
       </div>
       <p style="font-size:.72rem;color:var(--text2);margin:10px 0 0;">General training and nutrition guidance built from your own log. Not medical advice. Ctrl+Enter sends.</p>
+      <div class="ai-chat-tools" id="ai-chat-tools" style="display:none;"><span id="ai-chat-count"></span><a onclick="aiExpandAll(true)">expand all</a><a onclick="aiExpandAll(false)">collapse all</a></div>
+      <div id="ai-chat" class="ai-chat"></div>
     </div>
     <div class="card">
       <h3>What the coach knows about you</h3>
@@ -8100,13 +8113,15 @@ window.buildAiContextPacket = function(weeks) {
 
   L.push('');
   L.push('EXERCISE PROGRESSION in window (max kg x max reps per session, oldest > newest; dl = deload; all-time PR in brackets, e1RM = Epley). For "Assisted" exercises the kg is the assistance weight, so less kg = stronger:');
-  const prs = getAllPRs();
   Object.keys(c.exerciseHistory).sort().forEach(name => {
     const recent = c.exerciseHistory[name].filter(h => h.date >= cutStr && h.sets.length);
     if (!recent.length) return;
-    const pr = prs[name];
+    // PR = heaviest logged working set (same unit as the session lines), e1RM from the raw kg
+    let prKg = 0, prDate = '', prE = 0, prEDate = '';
+    c.exerciseHistory[name].forEach(h => { if (h.deload || !h.sets.length) return; if (h.maxKg > prKg) { prKg = h.maxKg; prDate = h.date; } if (h.rawE1RM > prE) { prE = h.rawE1RM; prEDate = h.date; } });
     const seq = recent.slice(-6).map(h => h.date.slice(5) + ' ' + h.maxKg + 'x' + h.maxReps + (h.deload ? ' dl' : '')).join(' > ');
-    L.push('  ' + name + ' [' + recent[0].bodyPart + ']: ' + seq + (pr ? ' [PR ' + pr.bestWeight + ' kg, e1RM ' + pr.bestE1RM + ' kg on ' + pr.bestE1RMDate + ']' : ''));
+    const perArm = recent[0].mult && recent[0].mult !== 1 ? ' per-arm/side' : '';
+    L.push('  ' + name + ' [' + recent[0].bodyPart + perArm + ']: ' + seq + (prKg ? ' [PR ' + prKg + ' kg on ' + prDate + ', e1RM ' + Math.round(prE) + ' kg on ' + prEDate + ']' : ''));
   });
 
   const pel = c.pelotonHistory.filter(p => p.date >= cutStr);
@@ -12863,7 +12878,7 @@ function _aiLoadChat() { try { const v = JSON.parse(localStorage.getItem('ui_ai_
 function _aiSaveChat() { try { localStorage.setItem('ui_ai_chat', JSON.stringify(_aiHistory.slice(-40))); } catch (e) {} }
 
 function initAiTab() {
-  if (!_aiInited) { _aiInited = true; _aiLoadChat(); }
+  if (!_aiInited) { _aiInited = true; _aiLoadChat(); const n = _aiExchanges().length; _aiOpen = new Set(n ? [n - 1] : []); }
   const note = document.getElementById('ai-setup-note');
   if (note) note.style.display = AI_WORKER_URL ? 'none' : '';
   const send = document.getElementById('ai-send');
@@ -12893,17 +12908,29 @@ function aiShowPacket(force) {
 function aiSuggest(chip) { const q = document.getElementById('ai-q'); q.value = chip.textContent.trim(); q.focus(); }
 function aiNewChat() {
   if (_aiBusy) return;
-  _aiHistory = []; _aiPacket = null; _aiSaveChat(); aiRenderChat(); aiShowPacket(false);
+  _aiHistory = []; _aiOpen = new Set(); _aiPacket = null; _aiSaveChat(); aiRenderChat(); aiShowPacket(false);
 }
 function aiEsc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-// Tiny markdown: headings, bullets, numbered lists, bold, code, paragraphs. Escapes first.
+// Small markdown renderer: headings, bullets, numbered lists, pipe tables, bold, code, paragraphs. Escapes first.
 function aiMd(text) {
-  const lines = aiEsc(text).split('\n');
-  const out = []; let list = null;
-  const closeList = () => { if (list) { out.push('</' + list + '>'); list = null; } };
+  const lines = aiEsc(text).replace(/\r/g, '').split('\n');
+  const out = []; let list = null; let table = null;
   const inline = s => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  const closeList = () => { if (list) { out.push('</' + list + '>'); list = null; } };
+  const closeTable = () => {
+    if (!table) return;
+    let h = '<div class="ai-tablewrap"><table>';
+    table.forEach((cells, i) => { const tag = i === 0 ? 'th' : 'td'; h += '<tr>' + cells.map(c => '<' + tag + '>' + inline(c) + '</' + tag + '>').join('') + '</tr>'; });
+    out.push(h + '</table></div>'); table = null;
+  };
+  const splitRow = l => { let t = l.trim(); if (t.startsWith('|')) t = t.slice(1); if (t.endsWith('|')) t = t.slice(0, -1); return t.split('|').map(c => c.trim()); };
   lines.forEach(raw => {
     const l = raw.trimEnd();
+    if (/^\s*\|.*\|\s*$/.test(l) || (table && /^\s*\|/.test(l))) {
+      if (/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l)) return;   // separator row
+      closeList(); if (!table) table = []; table.push(splitRow(l)); return;
+    }
+    closeTable();
     if (!l.trim()) { closeList(); return; }
     let m;
     if ((m = l.match(/^#{1,4}\s+(.*)$/))) { closeList(); out.push('<h4>' + inline(m[1]) + '</h4>'); return; }
@@ -12911,21 +12938,43 @@ function aiMd(text) {
     if ((m = l.match(/^\s*\d+[.)]\s+(.*)$/))) { if (list !== 'ol') { closeList(); out.push('<ol>'); list = 'ol'; } out.push('<li>' + inline(m[1]) + '</li>'); return; }
     closeList(); out.push('<p>' + inline(l) + '</p>');
   });
-  closeList();
+  closeList(); closeTable();
   return out.join('');
 }
+// Exchanges = (question, answer) pairs; shown newest first as collapsible cards. _aiOpen holds open indexes.
+let _aiOpen = new Set();
+function _aiExchanges() {
+  const xs = [];
+  for (let i = 0; i < _aiHistory.length; i++) {
+    const m = _aiHistory[i];
+    if (m.role === 'user') xs.push({ q: m.content, a: null, meta: '', ts: m.ts || '' });
+    else if (xs.length) { const x = xs[xs.length - 1]; x.a = m.content; x.meta = m.meta || ''; x.ts = x.ts || m.ts || ''; }
+  }
+  return xs;
+}
+function _aiWhen(ts) { if (!ts) return ''; const t = new Date(ts); return isNaN(t) ? '' : t.toLocaleString('en-AU', { timeZone: 'Australia/Melbourne', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+function aiToggle(i) { if (_aiOpen.has(i)) _aiOpen.delete(i); else _aiOpen.add(i); aiRenderChat(); }
+function aiExpandAll(open) { _aiOpen = new Set(); if (open) _aiExchanges().forEach((x, i) => _aiOpen.add(i)); aiRenderChat(); }
 function aiRenderChat(streamingText) {
   const box = document.getElementById('ai-chat');
   if (!box) return;
+  const xs = _aiExchanges();
+  const streaming = streamingText !== undefined;
+  if (streaming) _aiOpen.add(xs.length - 1);   // the question just asked is open while it streams
   let html = '';
-  if (!_aiHistory.length && streamingText === undefined) html = '<div style="font-size:.85rem;color:var(--text2);padding:6px 2px;">Ask anything about your training. The coach sees your profile, the last 8 weeks of sessions, cardio, nutrition and bodyweight.</div>';
-  _aiHistory.forEach(m => {
-    if (m.role === 'user') html += '<div class="ai-msg user">' + aiEsc(m.content) + '</div>';
-    else html += '<div class="ai-msg ai">' + aiMd(m.content) + (m.meta ? '<div class="ai-meta">' + aiEsc(m.meta) + '</div>' : '') + '</div>';
-  });
-  if (streamingText !== undefined) html += '<div class="ai-msg ai streaming">' + aiMd(streamingText) + '</div>';
+  for (let i = xs.length - 1; i >= 0; i--) {
+    const x = xs[i];
+    const isLive = streaming && i === xs.length - 1;
+    const open = _aiOpen.has(i);
+    const meta = [_aiWhen(x.ts), isLive ? 'answering…' : (x.meta ? x.meta.split(' · ')[0] : '')].filter(Boolean).join(' · ');
+    html += '<div class="ai-x' + (open ? ' open' : '') + (isLive ? ' streaming' : '') + '">'
+      + '<div class="ai-x-head" onclick="aiToggle(' + i + ')"><span class="ai-x-q">' + aiEsc(x.q) + '</span><span class="ai-x-meta">' + aiEsc(meta) + '</span><span class="ai-x-chev">▾</span></div>'
+      + '<div class="ai-x-body">' + aiMd(isLive ? streamingText : (x.a || '')) + (!isLive && x.meta ? '<div class="ai-x-foot">' + aiEsc(x.meta) + '</div>' : '') + '</div></div>';
+  }
+  if (!xs.length) html = '<div style="font-size:.85rem;color:var(--text2);padding:6px 2px;">Ask anything about your training. The coach sees your profile, the last 8 weeks of sessions, cardio, nutrition and bodyweight. Each question becomes a card below; click a card to open or close it.</div>';
   box.innerHTML = html;
-  box.scrollTop = box.scrollHeight;
+  const tools = document.getElementById('ai-chat-tools');
+  if (tools) { tools.style.display = xs.length > 1 ? '' : 'none'; const c = document.getElementById('ai-chat-count'); if (c) c.textContent = xs.length + ' questions in this chat'; }
 }
 async function aiToken() {
   const u = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth().currentUser : null;
@@ -12941,7 +12990,8 @@ async function aiSend() {
   const sendBtn = document.getElementById('ai-send'); sendBtn.disabled = true;
   const status = document.getElementById('ai-status'); status.textContent = 'Thinking…';
   const history = _aiHistory.slice(-10).map(m => ({ role: m.role, content: m.content }));
-  _aiHistory.push({ role: 'user', content: question });
+  _aiHistory.push({ role: 'user', content: question, ts: new Date().toISOString() });
+  _aiOpen = new Set();   // older cards fold away, the new one opens
   qEl.value = '';
   let answer = '';
   aiRenderChat('');
@@ -12976,7 +13026,7 @@ async function aiSend() {
       }
     }
     if (!answer) answer = '(No answer returned.)';
-    _aiHistory.push({ role: 'assistant', content: answer, meta });
+    _aiHistory.push({ role: 'assistant', content: answer, meta, ts: new Date().toISOString() });
     status.textContent = '';
   } catch (e) {
     const msg = (e && e.message) || String(e);
