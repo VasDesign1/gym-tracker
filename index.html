@@ -2420,6 +2420,9 @@ Object.values(EXERCISE_DATABASE).forEach(arr => arr.forEach(name => {
 }));
 
 // ===================== CUSTOM TOOLTIP =====================
+function hideChartTooltip() { const el = document.getElementById('chart-tooltip'); if (el) el.classList.add('hidden'); }
+// Chart.js never sends the 'hide' event when its chart is destroyed or scrolled away, so hide on tab/panel changes and scroll.
+document.addEventListener('scroll', hideChartTooltip, true);
 function externalTooltipHandler(context) {
   const { chart, tooltip } = context;
   const el = document.getElementById('chart-tooltip');
@@ -3276,6 +3279,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
       tab.classList.add('active');
       document.getElementById('view-' + tab.dataset.view).classList.add('active');
+      hideChartTooltip();
       if (tab.dataset.view === 'calendar') renderCalendar();
       if (tab.dataset.view === 'analytics') refreshAnalytics();
       if (tab.dataset.view === 'insights') populateInsightExercises();
@@ -6651,6 +6655,7 @@ function renderPelotonInsights(workouts, period) {
 }
 
 function destroyChart(id) {
+  hideChartTooltip();
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
@@ -9554,6 +9559,7 @@ function getStreak() {
 
 // ===================== RENDER FUNCTIONS =====================
 function switchCoachPanel(panel) {
+  if (typeof hideChartTooltip === 'function') hideChartTooltip();
   document.querySelectorAll('#coach-subnav .chip').forEach(c=>{c.classList.toggle('selected',c.dataset.panel===panel);});
   const el = document.getElementById('coach-content');
   _coachCache = null; // refresh
