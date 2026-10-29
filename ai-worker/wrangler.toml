@@ -20,7 +20,7 @@ FIREBASE_API_KEY = "AIzaSyCP8qvTGzBdols1FSr5Q9EwMXvsJRkzAEY"
 # Hard stop for this Worker per calendar month, in USD. Console spend limit is the outer guard.
 MONTHLY_CAP_USD = "45"
 # claude-fable-5-1 (most capable, ~2.5x the price) or claude-opus-5-5 (cheaper). Redeploy after changing.
-MODEL = "claude-fable-5-1"
+MODEL = "claude-opus-5-5"
 
 # Secrets (never in this file):
 #   ANTHROPIC_API_KEY  -> set in the Cloudflare dashboard: Workers & Pages > gym-tracker-ai > Settings > Variables and Secrets
