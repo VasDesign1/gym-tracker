@@ -12853,7 +12853,7 @@ window.adminDelete = async function(userId) {
 // ===================== AI COACH TAB =====================
 // Talks to the Cloudflare Worker in ai-worker/ which holds the Anthropic key. The Worker
 // verifies the Firebase ID token and only serves the e-mails on its allow-list.
-let AI_WORKER_URL = '';     // e.g. 'https://gym-tracker-ai.<account>.workers.dev' (no trailing slash)
+let AI_WORKER_URL = 'https://gym-tracker-ai.gym-tracker-ai.workers.dev';   // Cloudflare Worker in ai-worker/ (no trailing slash)
 let _aiHistory = [];        // [{role:'user'|'assistant', content, meta?}]
 let _aiPacket = null;       // data packet for this sitting (rebuilt on New chat)
 let _aiBusy = false;

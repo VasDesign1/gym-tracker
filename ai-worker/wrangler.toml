@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 # and paste the printed id below.
 [[kv_namespaces]]
 binding = "AI_LEDGER"
-id = "REPLACE_WITH_KV_ID"
+id = "df4fb923756d42fca8012ad6d0713c9b"
 
 [vars]
 # Browser origins allowed to call this Worker (comma separated).
