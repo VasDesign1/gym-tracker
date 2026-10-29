@@ -1763,7 +1763,8 @@ function _gymPushV2(opts) {
   const localRaw = _rawGetWorkouts();
   const groups = _groupByMonth(localRaw);
   const dirty = _dirtyMonths(groups);
-  const ts = Date.now();
+  // Monotonic: never below what the cloud already carries, even if this device's clock is behind.
+  const ts = Math.max(Date.now(), (_lastPushedModified || 0) + 1);
   let localChanged = false;
   const localActive = localRaw.filter(w => !w.deleted).length;
   // Shrinkage guard (same intent as the legacy one): local looks wiped but the cloud has data -> pull instead.
@@ -1955,13 +1956,17 @@ function gymStartCloudListener() {
       const remoteModified = remote.lastModified || 0;
       // Skip: this is the echo of our own most-recent push
       if (remoteModified === _lastPushedModified) return;
-      // Skip: nothing newer than what we already have
-      const localModified = parseInt(localStorage.getItem('gym_last_modified') || '0');
-      if (remoteModified <= localModified) return;
       if (!remoteData || Object.keys(remoteData).length === 0) return;
+      // Decide by CONTENT, not by comparing timestamps: device clocks differ (a phone a minute
+      // behind the PC used to have its changes ignored here forever). Workouts are merged per id
+      // inside _gymApplyRemoteData (and ignored on v2), so only the other keys matter.
+      const remoteOther = Object.assign({}, remoteData); delete remoteOther.gym_workouts;
+      const differs = Object.keys(remoteOther).some(k => localStorage.getItem(k) !== remoteOther[k]);
+      if (!differs && (_storageV2 || remoteData.gym_workouts === undefined)) return;
       console.log('[Sync] Remote change detected from another device, applying...');
       _gymApplyRemoteData(remoteData, remoteModified);
       _lastPushedModified = remoteModified; // we now match the cloud
+      try { _mainHash = _hashStr(JSON.stringify(_otherKeysJson())); } catch (e) {}   // nothing to push back
       _gymRerenderActiveView();
       if (typeof showToast === 'function') showToast('↻ Updated from another device', 'info');
     }, function(err) {
