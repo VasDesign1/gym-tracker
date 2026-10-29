@@ -25,8 +25,10 @@ export interface Env {
   MODEL: string;
 }
 
-// USD per million tokens. Claude Opus 5.5: $4 in / $20 out, cache read $0.20, cache write (5 min) $5.
+// USD per million tokens (input / output / cache read / 5-min cache write).
+// Fable 5.1: $10 / $50 / $0.25 / $12.50.  Opus 5.5: $4 / $20 / $0.20 / $5.
 const PRICES: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  "claude-fable-5-1": { input: 10, output: 50, cacheRead: 0.25, cacheWrite: 12.5 },
   "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
   "claude-sonnet-5-5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
 };
