@@ -12874,11 +12874,22 @@ let _aiPacket = null;       // data packet for this sitting (rebuilt on New chat
 let _aiBusy = false;
 let _aiInited = false;
 
-function _aiLoadChat() { try { const v = JSON.parse(localStorage.getItem('ui_ai_chat') || '[]'); _aiHistory = Array.isArray(v) ? v : []; } catch (e) { _aiHistory = []; } }
-function _aiSaveChat() { try { localStorage.setItem('ui_ai_chat', JSON.stringify(_aiHistory.slice(-40))); } catch (e) {} }
+function _aiLoadChat() {
+  try {
+    let raw = localStorage.getItem('gym_ai_chat');
+    if (raw === null && localStorage.getItem('ui_ai_chat')) { raw = localStorage.getItem('ui_ai_chat'); localStorage.setItem('gym_ai_chat', raw); localStorage.removeItem('ui_ai_chat'); }
+    const v = JSON.parse(raw || '[]'); _aiHistory = Array.isArray(v) ? v : [];
+  } catch (e) { _aiHistory = []; }
+}
+function _aiSaveChat() { try { localStorage.setItem('gym_ai_chat', JSON.stringify(_aiHistory.slice(-40))); } catch (e) {} }   // gym_ key: syncs across devices
 
 function initAiTab() {
-  if (!_aiInited) { _aiInited = true; _aiLoadChat(); const n = _aiExchanges().length; _aiOpen = new Set(n ? [n - 1] : []); }
+  if (!_aiBusy) {
+    const before = JSON.stringify(_aiHistory);
+    _aiLoadChat();
+    if (!_aiInited || JSON.stringify(_aiHistory) !== before) { const n = _aiExchanges().length; _aiOpen = new Set(n ? [n - 1] : []); }
+    _aiInited = true;
+  }
   const note = document.getElementById('ai-setup-note');
   if (note) note.style.display = AI_WORKER_URL ? 'none' : '';
   const send = document.getElementById('ai-send');
