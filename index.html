@@ -1471,7 +1471,7 @@ if (_activeUser === 'FO') {
 
 // ===================== COLOUR THEMES =====================
 // Stored in gym_theme (synced with the rest of the user's data). Applied by setting the CSS variables on <html>.
-var GYM_BUILD = '2026-10-29 r9';   // bump on every push; shown next to the sync status for FO so both devices can be compared
+var GYM_BUILD = '2026-10-29 r10';   // bump on every push; shown next to the sync status for FO so both devices can be compared
 var GYM_THEMES = [
   { id: 'midnight',  name: 'Midnight (default)', light: false, vars: { bg: '#0f0f1a', card: '#1a1a2e', card2: '#16213e', accent: '#0f3460', accent2: '#143d73', highlight: '#e94560', highlight2: '#ff6b6b', text: '#eaeaea', text2: '#a0a0b8', border: '#2a2a4a', 'input-bg': '#12122a' } },
   { id: 'sunrise',   name: 'Sunrise',      light: true, vars: { bg: '#ffc4a0', card: '#fff1e6', card2: '#ffdcc6', accent: '#ffa366', accent2: '#ff8c42', highlight: '#d7266b', highlight2: '#ef5a93', text: '#3a2014', text2: '#7a4a33', border: '#f2ad85', 'input-bg': '#fff8f2' } },
@@ -1599,7 +1599,17 @@ function gymPushToCloud(opts) {
   if (!_syncEnabled || !_fbDocRef) return Promise.resolve(false);
   if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
   if (_storageV2) return _gymPushV2(opts);
-  return _gymPushLegacy(opts);
+  // Not on v2 on this device (months probe failed earlier, flaky network, old session): re-check the
+  // cloud first so a legacy write can never clobber a document other devices already moved to v2.
+  return _fbDocRef.get().then(doc => {
+    if (doc && doc.exists && ((doc.data() || {}).storageVersion || 0) >= 2) {
+      console.log('[Sync v2] cloud is on v2, switching this device before pushing');
+      _storageV2 = true;
+      _mainHash = '';   // everything local counts as unsent: push first (per-month merge with the cloud), then pull the rest
+      return _gymPushV2(opts).then(r => gymPullFromCloud().then(() => r));
+    }
+    return _gymPushLegacy(opts);
+  }).catch(() => _gymPushLegacy(opts));
 }
 function _gymPushLegacy(opts) {
   gymSyncStatus('syncing');
@@ -1645,7 +1655,7 @@ function _gymPushLegacy(opts) {
       }
       const data = gymCollectAllUserKeys();
       const ts = Date.now();
-      return _fbDocRef.set({data:data, lastModified:ts, user:_activeUser}, {merge:false})
+      return _fbDocRef.set({data:data, lastModified:ts, user:_activeUser}, {merge:true})
         .then(() => {
           const _bypassSet = _origAuthSet;
           _bypassSet('gym_last_modified', String(ts));
@@ -1667,7 +1677,19 @@ function gymPullFromCloud() {
         _storageV2 = true;
         return _gymPullV2(doc);
       }
-      return _gymPullLegacy(doc).then(updated => _gymMigrateToV2().then(() => updated));
+      const legacy = () => _gymPullLegacy(doc).then(updated => _gymMigrateToV2().then(() => updated));
+      if (!_monthsRef) return legacy();
+      // No flag on the main document. If month documents already exist, another device migrated and a
+      // legacy writer dropped the flag: restore it and carry on with v2. Never re-migrate (that would
+      // overwrite the month documents from this device's local copy and download another backup).
+      return _monthsRef.get().then(snap => {
+        if (snap && snap.size > 0) {
+          console.warn('[Sync v2] main document lost its storageVersion flag; restoring it');
+          _storageV2 = true;
+          return _fbDocRef.set({ storageVersion: 2 }, { merge: true }).catch(() => {}).then(() => _gymPullV2(doc));
+        }
+        return legacy();
+      }, () => legacy());
     })
     .catch(e => { console.error('[Sync] Pull failed:',e); gymSyncStatus('offline'); _initialPullDone = true; return false; });
 }
@@ -1855,9 +1877,12 @@ function _gymMigrateToV2() {
     const ts = Date.now();
     const saved = _downloadWorkoutsBackup(raw, 'before-monthly');
     return Promise.all(months.map(m => {
-      const j = JSON.stringify(groups[m]);
-      _monthTs[m] = ts;
-      return _monthsRef.doc(m).set({ workouts: j, lastModified: ts, user: _activeUser, month: m }).then(() => { _monthHashes[m] = _hashStr(j); });
+      return _monthsRef.doc(m).get().then(snap => { try { return JSON.parse(((snap && snap.exists ? snap.data() : {}) || {}).workouts || '[]'); } catch (e) { return []; } }, () => []).then(cloudMonth => {
+        const list = cloudMonth.length ? mergeWorkouts(groups[m], cloudMonth) : groups[m];
+        const j = JSON.stringify(list);
+        _monthTs[m] = ts;
+        return _monthsRef.doc(m).set({ workouts: j, lastModified: ts, user: _activeUser, month: m }).then(() => { _monthHashes[m] = _hashStr(j); });
+      });
     })).then(() => {
       const other = _otherKeysJson();
       return _fbDocRef.set({ data: other, storageVersion: 2, migratedAt: ts, lastModified: ts, user: _activeUser }, { merge: true })
