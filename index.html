@@ -1111,20 +1111,22 @@ html.theme-light .card{box-shadow:0 2px 8px rgba(0,0,0,.05);}
   <div id="view-admin" class="view">
     <h2>⚙ Admin Panel</h2>
     <div class="card">
-      <h3>Sync diagnostics <button class="btn btn-secondary btn-sm" style="margin-left:8px;" onclick="renderSyncDiag()">Refresh</button> <button class="btn btn-secondary btn-sm" onclick="gymForceSync()">Push now</button></h3>
-      <pre id="sync-diag" style="white-space:pre-wrap;font-size:.72rem;background:var(--card2);padding:10px;border-radius:6px;"></pre>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-        <button class="btn btn-secondary btn-sm" onclick="uploadSyncDiag()">Upload this device's report</button>
-        <button class="btn btn-secondary btn-sm" onclick="loadSyncDiagReports()">Load reports from other devices</button>
-      </div>
-      <pre id="sync-diag-reports" style="white-space:pre-wrap;font-size:.72rem;background:var(--card2);padding:10px;border-radius:6px;margin-top:8px;"></pre>
-    </div>
-    <div class="card">
       <h3>User Approval Management</h3>
       <p style="font-size:.85rem;color:var(--text2);margin-bottom:16px;">Approve or reject new user signup requests. Only approved users can log into the app.</p>
       <button class="btn btn-secondary btn-sm" onclick="adminRefresh()">⟳ Refresh List</button>
     </div>
     <div id="admin-content" style="margin-top:16px;"></div>
+    <details class="card" id="sync-diag-details" style="margin-top:16px;" ontoggle="if(this.open) renderSyncDiag()">
+      <summary style="cursor:pointer;font-size:.85rem;color:var(--text2);">Sync diagnostics (for troubleshooting only)</summary>
+      <h3 style="margin-top:12px;">Sync diagnostics <button class="btn btn-secondary btn-sm" style="margin-left:8px;" onclick="renderSyncDiag()">Refresh</button> <button class="btn btn-secondary btn-sm" onclick="gymForceSync()">Push now</button></h3>
+      <pre id="sync-diag" style="white-space:pre-wrap;font-size:.72rem;background:var(--card2);padding:10px;border-radius:6px;"></pre>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="uploadSyncDiag()">Upload this device's report</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadSyncDiagReports()">Load reports from other devices</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearSyncDiagReports()">Clear uploaded reports</button>
+      </div>
+      <pre id="sync-diag-reports" style="white-space:pre-wrap;font-size:.72rem;background:var(--card2);padding:10px;border-radius:6px;margin-top:8px;"></pre>
+    </details>
   </div>
 </div>
 
@@ -1528,7 +1530,7 @@ function _hookStorage(name, fn) {
 
 // ===================== COLOUR THEMES =====================
 // Stored in gym_theme (synced with the rest of the user's data). Applied by setting the CSS variables on <html>.
-var GYM_BUILD = '2026-10-29 r13';   // bump on every push; shown next to the sync status for FO so both devices can be compared
+var GYM_BUILD = '2026-10-29 r14';   // bump on every push; shown next to the sync status for FO so both devices can be compared
 var GYM_THEMES = [
   { id: 'midnight',  name: 'Midnight (default)', light: false, vars: { bg: '#0f0f1a', card: '#1a1a2e', card2: '#16213e', accent: '#0f3460', accent2: '#143d73', highlight: '#e94560', highlight2: '#ff6b6b', text: '#eaeaea', text2: '#a0a0b8', border: '#2a2a4a', 'input-bg': '#12122a' } },
   { id: 'sunrise',   name: 'Sunrise',      light: true, vars: { bg: '#ffc4a0', card: '#fff1e6', card2: '#ffdcc6', accent: '#ffa366', accent2: '#ff8c42', highlight: '#d7266b', highlight2: '#ef5a93', text: '#3a2014', text2: '#7a4a33', border: '#f2ad85', 'input-bg': '#fff8f2' } },
@@ -12959,7 +12961,7 @@ window.onCoachTimeRangeChange = function() {
 
 // ===================== ADMIN PANEL =====================
 window.adminRefresh = async function() {
-  try { renderSyncDiag(); } catch (e) {}
+  try { const dd = document.getElementById('sync-diag-details'); if (dd && dd.open) renderSyncDiag(); } catch (e) {}
   const el = document.getElementById('admin-content');
   if (!el) return;
   if (!window.gymCurrentUser || window.gymCurrentUser.toUpperCase() !== 'FO') {
@@ -13144,6 +13146,16 @@ async function uploadSyncDiag() {
     await _fbDocRef.collection('feeds').doc('diag-' + _diagDeviceId()).set({ text, at: Date.now(), ua: navigator.userAgent, build: GYM_BUILD, kind: 'diag' });
     showToast('Report uploaded', 'info');
   } catch (e) { showToast('Upload failed: ' + (e && e.message || e), 'error'); }
+}
+async function clearSyncDiagReports() {
+  if (!confirm('Delete all uploaded diagnostic reports from the cloud?')) return;
+  try {
+    const col = await _fbDocRef.collection('feeds').get();
+    const dels = []; col.forEach(dc => { if (dc.id.startsWith('diag-')) dels.push(_fbDocRef.collection('feeds').doc(dc.id).delete()); });
+    await Promise.all(dels);
+    const el = document.getElementById('sync-diag-reports'); if (el) el.textContent = '';
+    showToast('Deleted ' + dels.length + ' report(s)', 'info');
+  } catch (e) { showToast('Delete failed: ' + (e && e.message || e), 'error'); }
 }
 async function loadSyncDiagReports() {
   const el = document.getElementById('sync-diag-reports'); if (!el) return;
