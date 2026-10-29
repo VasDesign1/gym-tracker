@@ -715,6 +715,7 @@ html.theme-light .card{box-shadow:0 2px 8px rgba(0,0,0,.05);}
   </div>
   <span class="gym-user-badge" id="gym-user-badge"></span>
   <span id="gym-sync-status" style="font-size:.7rem;color:var(--text2);margin-left:8px;cursor:pointer;" onclick="gymForceSync()" title="Click to force sync">☁ Synced v3</span>
+  <span id="gym-build" style="font-size:.62rem;color:var(--text2);margin-left:6px;opacity:.7;display:none;" title="Build of this page"></span>
   <button class="gym-logout-btn" onclick="gymLogout()">Logout</button>
   <button class="theme-btn" id="gym-theme-btn" style="display:none;" onclick="toggleThemePop(event)" title="Colour theme">🎨</button>
   <div class="theme-pop" id="theme-pop"></div>
@@ -1470,6 +1471,7 @@ if (_activeUser === 'FO') {
 
 // ===================== COLOUR THEMES =====================
 // Stored in gym_theme (synced with the rest of the user's data). Applied by setting the CSS variables on <html>.
+var GYM_BUILD = '2026-10-29 r9';   // bump on every push; shown next to the sync status for FO so both devices can be compared
 var GYM_THEMES = [
   { id: 'midnight',  name: 'Midnight (default)', light: false, vars: { bg: '#0f0f1a', card: '#1a1a2e', card2: '#16213e', accent: '#0f3460', accent2: '#143d73', highlight: '#e94560', highlight2: '#ff6b6b', text: '#eaeaea', text2: '#a0a0b8', border: '#2a2a4a', 'input-bg': '#12122a' } },
   { id: 'sunrise',   name: 'Sunrise',      light: true, vars: { bg: '#ffc4a0', card: '#fff1e6', card2: '#ffdcc6', accent: '#ffa366', accent2: '#ff8c42', highlight: '#d7266b', highlight2: '#ef5a93', text: '#3a2014', text2: '#7a4a33', border: '#f2ad85', 'input-bg': '#fff8f2' } },
@@ -3233,6 +3235,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (aiTab) aiTab.style.display = '';
     const themeBtn = document.getElementById('gym-theme-btn');
     if (themeBtn) themeBtn.style.display = '';
+    const buildEl = document.getElementById('gym-build');
+    if (buildEl) { buildEl.textContent = GYM_BUILD; buildEl.style.display = ''; }
+    console.log('[Gym tracker] build', GYM_BUILD);
   }
   // Wait for Firebase Auth state to restore before pulling (rules require auth)
   function _doInitialPull() {
