@@ -1458,29 +1458,77 @@ if (_activeUser === 'FO') {
   });
 }
 
+// Raw, never-wrapped access to the real storage (captured before any hook is installed).
+var _rawLS = (function() {
+  const p = Object.getPrototypeOf(localStorage) || {};
+  const m = n => (typeof p[n] === 'function' ? p[n] : localStorage[n]).bind(localStorage);
+  return { getItem: m('getItem'), setItem: m('setItem'), removeItem: m('removeItem'), key: m('key'), length: function() { return localStorage.length; } };
+})();
+// Override a localStorage method in a way that works in EVERY engine. Chrome and Firefox let
+// `localStorage.setItem = fn` replace the method; per the HTML spec (WebKit / iOS Safari, jsdom) that
+// assignment STORES AN ITEM named "setItem" and leaves the real method untouched, so the wrapper is
+// silently never installed. defineProperty makes a real own property; if the engine still does not
+// honour it, the prototype is patched for this storage object only. The result is verified.
+var _storageHookMode = {};
+// Junk items left behind by the old assignment-style hooks on engines that store instead of override.
+// Detected BEFORE hooking (the installer cleans them up) and used by reconcileUnhookedStorage below.
+var _unhookedMarkers = ['getItem', 'setItem', 'removeItem'].filter(function(n) { const v = _rawLS.getItem(n); return v !== null && /function/.test(String(v)); });
+function _hookStorage(name, fn) {
+  try { Object.defineProperty(localStorage, name, { value: fn, writable: true, configurable: true }); } catch (e) {}
+  if (localStorage[name] === fn) { _storageHookMode[name] = 'own'; return; }
+  try { _rawLS.removeItem(name); } catch (e) {}   // the assignment may have left a junk item behind
+  const proto = Object.getPrototypeOf(localStorage);
+  const prev = proto[name];
+  proto[name] = function() { return this === localStorage ? fn.apply(this, arguments) : prev.apply(this, arguments); };
+  _storageHookMode[name] = (localStorage[name] === proto[name]) ? 'proto' : 'FAILED';
+}
 // Install localStorage wrapper to auto-prefix all gym_ keys with the active user
 (function() {
-  const _origGet = localStorage.getItem.bind(localStorage);
-  const _origSet = localStorage.setItem.bind(localStorage);
-  const _origRemove = localStorage.removeItem.bind(localStorage);
+  const _origGet = _rawLS.getItem;
+  const _origSet = _rawLS.setItem;
+  const _origRemove = _rawLS.removeItem;
   const u = _activeUser;
-  localStorage.getItem = function(k) {
+  _hookStorage('getItem', function(k) {
     if (k && k.startsWith('gym_')) return _origGet(u + '_' + k);
     return _origGet(k);
-  };
-  localStorage.setItem = function(k, v) {
+  });
+  _hookStorage('setItem', function(k, v) {
     if (k && k.startsWith('gym_')) return _origSet(u + '_' + k, v);
     return _origSet(k, v);
-  };
-  localStorage.removeItem = function(k) {
+  });
+  _hookStorage('removeItem', function(k) {
     if (k && k.startsWith('gym_')) return _origRemove(u + '_' + k);
     return _origRemove(k);
-  };
+  });
+})();
+// A device whose engine ignored the old assignment-style hooks has been reading and writing the
+// UNPREFIXED gym_ keys all along (that is where its live data is), while the FO_ copies made at login
+// are stale snapshots. Such a device is recognisable by the junk items the assignments left behind.
+// Move the live values into the prefixed store (workouts merged per id), keep a copy, drop the junk.
+(function reconcileUnhookedStorage() {
+  const markers = _unhookedMarkers;
+  if (!markers.length) return;
+  const u = _activeUser; let moved = 0;
+  const keys = []; for (let i = 0; i < _rawLS.length(); i++) keys.push(_rawLS.key(i));
+  keys.forEach(k => {
+    if (!k || !k.startsWith('gym_')) return;
+    const live = _rawLS.getItem(k); const pk = u + '_' + k; const cur = _rawLS.getItem(pk);
+    if (live === null) return;
+    if (cur === live) { _rawLS.removeItem(k); return; }
+    let val = live;
+    if (k === 'gym_workouts' && cur && typeof mergeWorkouts === 'function') {
+      try { val = JSON.stringify(mergeWorkouts(JSON.parse(cur), JSON.parse(live))); } catch (e) { val = live; }
+    }
+    try { _rawLS.setItem(pk, val); _rawLS.setItem('unhooked_backup_' + u + '_' + k, live); _rawLS.removeItem(k); moved++; } catch (e) {}
+  });
+  markers.forEach(n => { try { _rawLS.removeItem(n); } catch (e) {} });
+  window._storageReconciled = moved;
+  console.warn('[Storage] hooks had never been installed on this device; moved', moved, 'live key(s) into the prefixed store');
 })();
 
 // ===================== COLOUR THEMES =====================
 // Stored in gym_theme (synced with the rest of the user's data). Applied by setting the CSS variables on <html>.
-var GYM_BUILD = '2026-10-29 r12';   // bump on every push; shown next to the sync status for FO so both devices can be compared
+var GYM_BUILD = '2026-10-29 r13';   // bump on every push; shown next to the sync status for FO so both devices can be compared
 var GYM_THEMES = [
   { id: 'midnight',  name: 'Midnight (default)', light: false, vars: { bg: '#0f0f1a', card: '#1a1a2e', card2: '#16213e', accent: '#0f3460', accent2: '#143d73', highlight: '#e94560', highlight2: '#ff6b6b', text: '#eaeaea', text2: '#a0a0b8', border: '#2a2a4a', 'input-bg': '#12122a' } },
   { id: 'sunrise',   name: 'Sunrise',      light: true, vars: { bg: '#ffc4a0', card: '#fff1e6', card2: '#ffdcc6', accent: '#ffa366', accent2: '#ff8c42', highlight: '#d7266b', highlight2: '#ef5a93', text: '#3a2014', text2: '#7a4a33', border: '#f2ad85', 'input-bg': '#fff8f2' } },
@@ -2037,7 +2085,7 @@ const _origRawRemove = (function(){
   return localStorage.removeItem.bind(localStorage);
 })();
 
-localStorage.setItem = function(k, v) {
+_hookStorage('setItem', function(k, v) {
   const result = _origAuthSet(k, v);
   if (k && k.startsWith('gym_') && k !== 'gym_last_modified' && k !== 'gym_seed_imported_v1' && typeof _syncDiag !== 'undefined') {
     _diagPush(_syncDiag.writes, { at: Date.now(), key: k, scheduled: !!_initialPullDone, enabled: _syncEnabled });
@@ -2052,7 +2100,7 @@ localStorage.setItem = function(k, v) {
     gymSchedulePush();
   }
   return result;
-};
+});
 
 window.gymForceSync = function() { gymPushToCloud(); };
 
@@ -13069,6 +13117,7 @@ function renderSyncDiag() {
   L.push('syncEnabled ' + _syncEnabled + ' | initialPullDone ' + _initialPullDone + ' | storageV2 ' + _storageV2 + ' | status ' + _syncStatus + ' | timer ' + (_syncTimer ? 'pending' : 'none') + ' | watchdog pushes ' + _syncDiag.watchdog);
   L.push('listener ' + (_syncDiag.listener ? 'attached' : 'NOT attached') + ' | months listener ' + (_monthsUnsub ? 'attached' : 'no') + ' | ' + (navigator.userAgent || '').slice(0, 80));
   L.push('lastPushedModified ' + t(_lastPushedModified) + ' | local gym_last_modified ' + t(parseInt(localStorage.getItem('gym_last_modified') || '0')) + ' | mainHash ' + String(_mainHash).slice(0, 10));
+  L.push('storage hooks ' + JSON.stringify(_storageHookMode) + ' | reconciled keys ' + (window._storageReconciled === undefined ? 'n/a' : window._storageReconciled) + ' | setItem is hook: ' + (localStorage.setItem !== Object.getPrototypeOf(localStorage).setItem || _storageHookMode.setItem === 'proto'));
   L.push('local gym_theme ' + (localStorage.getItem('gym_theme') || '(none)') + ' | firebase user ' + ((typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser.email : 'none'));
   L.push('');
   L.push('LOCAL WRITES of gym_ keys (newest last):');
