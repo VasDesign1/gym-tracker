@@ -1111,6 +1111,10 @@ html.theme-light .card{box-shadow:0 2px 8px rgba(0,0,0,.05);}
   <div id="view-admin" class="view">
     <h2>⚙ Admin Panel</h2>
     <div class="card">
+      <h3>Sync diagnostics <button class="btn btn-secondary btn-sm" style="margin-left:8px;" onclick="renderSyncDiag()">Refresh</button> <button class="btn btn-secondary btn-sm" onclick="gymForceSync()">Push now</button></h3>
+      <pre id="sync-diag" style="white-space:pre-wrap;font-size:.72rem;background:var(--card2);padding:10px;border-radius:6px;"></pre>
+    </div>
+    <div class="card">
       <h3>User Approval Management</h3>
       <p style="font-size:.85rem;color:var(--text2);margin-bottom:16px;">Approve or reject new user signup requests. Only approved users can log into the app.</p>
       <button class="btn btn-secondary btn-sm" onclick="adminRefresh()">⟳ Refresh List</button>
@@ -1471,7 +1475,7 @@ if (_activeUser === 'FO') {
 
 // ===================== COLOUR THEMES =====================
 // Stored in gym_theme (synced with the rest of the user's data). Applied by setting the CSS variables on <html>.
-var GYM_BUILD = '2026-10-29 r10';   // bump on every push; shown next to the sync status for FO so both devices can be compared
+var GYM_BUILD = '2026-10-29 r11';   // bump on every push; shown next to the sync status for FO so both devices can be compared
 var GYM_THEMES = [
   { id: 'midnight',  name: 'Midnight (default)', light: false, vars: { bg: '#0f0f1a', card: '#1a1a2e', card2: '#16213e', accent: '#0f3460', accent2: '#143d73', highlight: '#e94560', highlight2: '#ff6b6b', text: '#eaeaea', text2: '#a0a0b8', border: '#2a2a4a', 'input-bg': '#12122a' } },
   { id: 'sunrise',   name: 'Sunrise',      light: true, vars: { bg: '#ffc4a0', card: '#fff1e6', card2: '#ffdcc6', accent: '#ffa366', accent2: '#ff8c42', highlight: '#d7266b', highlight2: '#ef5a93', text: '#3a2014', text2: '#7a4a33', border: '#f2ad85', 'input-bg': '#fff8f2' } },
@@ -1569,6 +1573,7 @@ try {
 } catch(e) { console.error('[Sync] Firestore ref failed:', e); }
 
 function gymSyncStatus(s) {
+  if ((s === 'error' || s === 'offline') && typeof _syncDiag !== 'undefined') _diagPush(_syncDiag.errors, { at: Date.now(), where: 'status', msg: s });
   _syncStatus = s;
   const el = document.getElementById('gym-sync-status');
   if (el) {
@@ -1596,12 +1601,15 @@ function gymCollectAllUserKeys() {
 
 let _lastPushedModified = 0;
 function gymPushToCloud(opts) {
-  if (!_syncEnabled || !_fbDocRef) return Promise.resolve(false);
+  if (!_syncEnabled || !_fbDocRef) { _diagPush(_syncDiag.pushes, { at: Date.now(), result: 'skipped: sync not enabled' }); return Promise.resolve(false); }
   if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
-  if (_storageV2) return _gymPushV2(opts);
+  const diag = { at: Date.now(), v2: _storageV2, result: 'running' };
+  _diagPush(_syncDiag.pushes, diag);
+  const done = p => p.then(r => { diag.result = (r ? 'ok' : 'nothing sent / refused') + ' (' + _syncStatus + ')'; diag.pushed = _lastPushedModified; return r; }, e => { diag.result = 'error: ' + String(e && e.message || e); throw e; });
+  if (_storageV2) return done(_gymPushV2(opts));
   // Not on v2 on this device (months probe failed earlier, flaky network, old session): re-check the
   // cloud first so a legacy write can never clobber a document other devices already moved to v2.
-  return _fbDocRef.get().then(doc => {
+  return done(_fbDocRef.get().then(doc => {
     if (doc && doc.exists && ((doc.data() || {}).storageVersion || 0) >= 2) {
       console.log('[Sync v2] cloud is on v2, switching this device before pushing');
       _storageV2 = true;
@@ -1609,7 +1617,7 @@ function gymPushToCloud(opts) {
       return _gymPushV2(opts).then(r => gymPullFromCloud().then(() => r));
     }
     return _gymPushLegacy(opts);
-  }).catch(() => _gymPushLegacy(opts));
+  }).catch(() => _gymPushLegacy(opts)));
 }
 function _gymPushLegacy(opts) {
   gymSyncStatus('syncing');
@@ -1971,25 +1979,31 @@ function _gymApplyRemoteData(remoteData, remoteModified) {
 }
 
 let _snapshotUnsub = null;
+var _syncDiag = { listener: false, snapshots: [], pushes: [], errors: [] };
+function _diagPush(list, item) { list.push(item); if (list.length > 8) list.shift(); }
 function gymStartCloudListener() {
   if (!_syncEnabled || !_fbDocRef || _snapshotUnsub) return;
   try {
     _snapshotUnsub = _fbDocRef.onSnapshot(function(doc) {
-      if (!doc || !doc.exists) return;
+      const diag = { at: Date.now(), result: '' };
+      _diagPush(_syncDiag.snapshots, diag);
+      if (!doc || !doc.exists) { diag.result = 'no document'; return; }
       // Ignore events that came from our own local cache (offline echo)
-      if (doc.metadata && doc.metadata.fromCache) return;
+      if (doc.metadata && doc.metadata.fromCache) { diag.result = 'from cache, ignored'; return; }
       const remote = doc.data() || {};
       const remoteData = remote.data || {};
       const remoteModified = remote.lastModified || 0;
+      diag.remoteModified = remoteModified; diag.theme = remoteData.gym_theme || '';
       // Skip: this is the echo of our own most-recent push
-      if (remoteModified === _lastPushedModified) return;
-      if (!remoteData || Object.keys(remoteData).length === 0) return;
+      if (remoteModified === _lastPushedModified) { diag.result = 'own echo, skipped'; return; }
+      if (!remoteData || Object.keys(remoteData).length === 0) { diag.result = 'empty data, skipped'; return; }
       // Decide by CONTENT, not by comparing timestamps: device clocks differ (a phone a minute
       // behind the PC used to have its changes ignored here forever). Workouts are merged per id
       // inside _gymApplyRemoteData (and ignored on v2), so only the other keys matter.
       const remoteOther = Object.assign({}, remoteData); delete remoteOther.gym_workouts;
       const differs = Object.keys(remoteOther).some(k => localStorage.getItem(k) !== remoteOther[k]);
-      if (!differs && (_storageV2 || remoteData.gym_workouts === undefined)) return;
+      if (!differs && (_storageV2 || remoteData.gym_workouts === undefined)) { diag.result = 'identical content, skipped'; return; }
+      diag.result = 'applied: ' + Object.keys(remoteOther).filter(k => localStorage.getItem(k) !== remoteOther[k]).join(', ');
       console.log('[Sync] Remote change detected from another device, applying...');
       _gymApplyRemoteData(remoteData, remoteModified);
       _lastPushedModified = remoteModified; // we now match the cloud
@@ -1998,7 +2012,9 @@ function gymStartCloudListener() {
       if (typeof showToast === 'function') showToast('↻ Updated from another device', 'info');
     }, function(err) {
       console.error('[Sync] onSnapshot error:', err);
+      _diagPush(_syncDiag.errors, { at: Date.now(), where: 'listener', msg: String(err && err.message || err) });
     });
+    _syncDiag.listener = true;
     console.log('[Sync] Real-time cloud listener active');
   } catch(e) {
     console.error('[Sync] Failed to start cloud listener:', e);
@@ -12872,6 +12888,7 @@ window.onCoachTimeRangeChange = function() {
 
 // ===================== ADMIN PANEL =====================
 window.adminRefresh = async function() {
+  try { renderSyncDiag(); } catch (e) {}
   const el = document.getElementById('admin-content');
   if (!el) return;
   if (!window.gymCurrentUser || window.gymCurrentUser.toUpperCase() !== 'FO') {
@@ -13019,6 +13036,29 @@ window.adminDelete = async function(userId) {
     adminRefresh();
   } catch(e) { alert('Error: ' + e.message); }
 };
+
+// ===================== SYNC DIAGNOSTICS (Admin tab) =====================
+function renderSyncDiag() {
+  const el = document.getElementById('sync-diag'); if (!el) return;
+  const t = ms => ms ? new Date(ms).toLocaleTimeString('en-AU', { timeZone: 'Australia/Melbourne', hour12: false }) + '.' + String(ms % 1000).padStart(3, '0') : '-';
+  const L = [];
+  L.push('build ' + (typeof GYM_BUILD !== 'undefined' ? GYM_BUILD : '?') + ' | user ' + window.gymCurrentUser + ' | now ' + t(Date.now()));
+  L.push('syncEnabled ' + _syncEnabled + ' | storageV2 ' + _storageV2 + ' | status ' + _syncStatus + ' | listener ' + (_syncDiag.listener ? 'attached' : 'NOT attached') + ' | months listener ' + (_monthsUnsub ? 'attached' : 'no'));
+  L.push('lastPushedModified ' + t(_lastPushedModified) + ' | local gym_last_modified ' + t(parseInt(localStorage.getItem('gym_last_modified') || '0')) + ' | mainHash ' + String(_mainHash).slice(0, 10));
+  L.push('local gym_theme ' + (localStorage.getItem('gym_theme') || '(none)') + ' | firebase user ' + ((typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser.email : 'none'));
+  L.push('');
+  L.push('PUSHES (newest last):');
+  _syncDiag.pushes.forEach(p => L.push('  ' + t(p.at) + ' v2=' + p.v2 + ' -> ' + p.result + (p.pushed ? ' pushed=' + t(p.pushed) : '')));
+  if (!_syncDiag.pushes.length) L.push('  none since page load');
+  L.push('');
+  L.push('SNAPSHOTS RECEIVED (newest last):');
+  _syncDiag.snapshots.forEach(sn => L.push('  ' + t(sn.at) + ' remote=' + t(sn.remoteModified) + ' theme=' + (sn.theme || '-') + ' -> ' + sn.result));
+  if (!_syncDiag.snapshots.length) L.push('  none since page load');
+  L.push('');
+  L.push('ERRORS: ' + (_syncDiag.errors.length ? '' : 'none'));
+  _syncDiag.errors.forEach(e => L.push('  ' + t(e.at) + ' ' + e.where + ': ' + e.msg));
+  el.textContent = L.join('\n');
+}
 
 // ===================== AI COACH TAB =====================
 // Talks to the Cloudflare Worker in ai-worker/ which holds the Anthropic key. The Worker
